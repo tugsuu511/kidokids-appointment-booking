@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  ADMIN
+  RECEPTIONIST
+  DOCTOR
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  ARRIVED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  fullName     String
+  role         UserRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+model Department {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  doctors   Doctor[]
+  services  Service[]
+}
+
+model Doctor {
+  id           String          @id @default(cuid())
+  fullName     String
+  licenseNo    String          @unique
+  phone        String
+  room         String?
+  departmentId String
+  department   Department      @relation(fields: [departmentId], references: [id])
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  schedules    DoctorSchedule[]
+  appointments Appointment[]
+
+  @@index([departmentId])
+}
+
+model Patient {
+  id          String       @id @default(cuid())
+  registerNo  String?      @unique
+  firstName   String
+  lastName    String
+  phone       String
+  birthDate   DateTime?
+  gender      Gender?
+  address     String?
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  appointments Appointment[]
+
+  @@index([phone])
+  @@index([firstName, lastName])
+}
+
+model Service {
+  id           String       @id @default(cuid())
+  name         String
+  durationMin  Int
+  price        Decimal      @db.Decimal(10, 2)
+  departmentId String
+  department   Department   @relation(fields: [departmentId], references: [id])
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  appointments Appointment[]
+
+  @@index([departmentId])
+}
+
+model DoctorSchedule {
+  id          String   @id @default(cuid())
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id])
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
+  slotMinutes Int
+  isActive    Boolean  @default(true)
+
+  @@index([doctorId, dayOfWeek])
+}
+
+model Appointment {
+  id              String            @id @default(cuid())
+  appointmentDate DateTime
+  startTime       String
+  endTime         String
+  patientId       String
+  doctorId        String
+  serviceId       String
+  status          AppointmentStatus @default(BOOKED)
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@index([appointmentDate])
+  @@index([doctorId, appointmentDate])
+  @@index([patientId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
