@@ -52,17 +52,11 @@ async function main() {
     data: { name: "Хүүхдийн эмч", isActive: true },
   });
 
-  const vacc = await prisma.department.create({
-    data: { name: "Дархлаажуулалт", isActive: true },
-  });
-
   const doctor1 = await prisma.doctor.create({
     data: {
       fullName: "Д. Наран",
-      licenseNo: "LIC-1001",
       phone: "+976-99112233",
       room: "A-101",
-      departmentId: pediatric.id,
       isActive: true,
     },
   });
@@ -70,10 +64,8 @@ async function main() {
   const doctor2 = await prisma.doctor.create({
     data: {
       fullName: "Б. Уран",
-      licenseNo: "LIC-1002",
       phone: "+976-99112234",
       room: "A-102",
-      departmentId: vacc.id,
       isActive: true,
     },
   });
@@ -94,16 +86,6 @@ async function main() {
       durationMin: 20,
       price: 25000,
       departmentId: pediatric.id,
-      isActive: true,
-    },
-  });
-
-  const service3 = await prisma.service.create({
-    data: {
-      name: "Дархлаажуулалтын зөвлөгөө",
-      durationMin: 15,
-      price: 20000,
-      departmentId: vacc.id,
       isActive: true,
     },
   });
@@ -141,18 +123,6 @@ async function main() {
     },
   });
 
-  const patient3 = await prisma.patient.create({
-    data: {
-      registerNo: "P-1003",
-      firstName: "Мөнх",
-      lastName: "Төгс",
-      phone: "+976-99003333",
-      birthDate: new Date("2020-11-29T00:00:00Z"),
-      gender: Gender.OTHER,
-      address: "Улаанбаатар, Баянзүрх",
-    },
-  });
-
   const patient4 = await prisma.patient.create({
     data: {
       registerNo: "P-1004",
@@ -162,18 +132,6 @@ async function main() {
       birthDate: new Date("2016-02-17T00:00:00Z"),
       gender: Gender.FEMALE,
       address: "Улаанбаатар, Чингэлтэй",
-    },
-  });
-
-  const patient5 = await prisma.patient.create({
-    data: {
-      registerNo: "P-1005",
-      firstName: "Тэмүүлэн",
-      lastName: "Болд",
-      phone: "+976-99005555",
-      birthDate: new Date("2018-09-12T00:00:00Z"),
-      gender: Gender.MALE,
-      address: "Улаанбаатар, Баянхошуу",
     },
   });
 
@@ -202,15 +160,6 @@ async function main() {
         status: AppointmentStatus.CONFIRMED,
       },
       {
-        appointmentDate: today,
-        startTime: "11:00",
-        endTime: "11:30",
-        patientId: patient3.id,
-        doctorId: doctor2.id,
-        serviceId: service3.id,
-        status: AppointmentStatus.ARRIVED,
-      },
-      {
         appointmentDate: tomorrow,
         startTime: "10:00",
         endTime: "10:30",
@@ -218,15 +167,6 @@ async function main() {
         doctorId: doctor1.id,
         serviceId: service1.id,
         status: AppointmentStatus.BOOKED,
-      },
-      {
-        appointmentDate: tomorrow,
-        startTime: "11:00",
-        endTime: "11:30",
-        patientId: patient5.id,
-        doctorId: doctor2.id,
-        serviceId: service3.id,
-        status: AppointmentStatus.COMPLETED,
       },
     ],
   });

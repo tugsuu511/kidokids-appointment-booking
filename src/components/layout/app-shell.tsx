@@ -2,17 +2,31 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
-import { CalendarDays, LayoutDashboard } from "lucide-react";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { CalendarDays, LayoutDashboard, UserRoundCog } from "lucide-react";
+import type { MouseEvent, ReactNode } from "react";
 
 const navItems = [
   { href: "/dashboard", label: "Хяналтын самбар", icon: LayoutDashboard },
   { href: "/appointments", label: "Цаг захиалга", icon: CalendarDays },
+  { href: "/doctors", label: "Ажилтны бүртгэл", icon: UserRoundCog },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function navigateFromStaffRegistry(event: MouseEvent<HTMLAnchorElement>, href: string) {
+    if (!pathname.startsWith("/doctors") || href === "/doctors") return;
+
+    event.preventDefault();
+    try {
+      await fetch("/api/auth/staff-access", { method: "DELETE" });
+    } finally {
+      router.push(href);
+      router.refresh();
+    }
+  }
 
   if (pathname === "/login") {
     return <>{children}</>;
@@ -21,17 +35,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="flex min-h-screen">
-        <aside className="w-72 border-r border-slate-200 bg-slate-900 p-5 text-white">
+        <aside className="w-72 shrink-0 border-r border-sky-100 bg-sky-50 p-5 text-sky-950">
           <div className="mb-8">
             <Image
               src="/uploads/Logo.png"
               alt="Kido Kids"
               width={220}
               height={80}
-              className="h-16 w-full object-contain object-left"
+              className="h-24 w-full object-contain object-center"
               priority
             />
-            <h2 className="mt-2 text-2xl font-bold">Эмнэлгийн систем</h2>
           </div>
 
           <nav className="space-y-2">
@@ -39,7 +52,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 hover:text-white"
+                onClick={(event) => void navigateFromStaffRegistry(event, href)}
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sky-700 transition hover:bg-white/80 hover:text-sky-950"
               >
                 <Icon className="h-4 w-4" />
                 {label}
@@ -47,11 +61,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             ))}
           </nav>
 
-          <div className="mt-10 rounded-lg border border-slate-700 bg-slate-800 p-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Бүртгэлтэй</p>
-            <p className="mt-2 font-medium">Админ</p>
-            <p className="text-sm text-slate-300">ADMIN</p>
-          </div>
         </aside>
 
         <div className="flex-1">

@@ -1,0 +1,200 @@
+import assert from "node:assert/strict";
+import { afterEach, before, test } from "node:test";
+import { JSDOM } from "jsdom";
+
+import { AppointmentsClient } from "../src/app/appointments/appointments-client";
+import { DailyAppointments } from "../src/components/appointments/daily-appointments";
+
+let testing: typeof import("@testing-library/react");
+const originalFetch = globalThis.fetch;
+const appointment = {
+  id: "existing-booking",
+  appointmentDate: "2026-09-28T16:00:00.000Z",
+  startTime: "09:00",
+  endTime: "09:30",
+  status: "BOOKED",
+  patient: { firstName: "Example", lastName: "", phone: "" },
+  doctor: { id: "doctor-uran", fullName: "Б. Уран" },
+  service: { name: "Хүүхдийн эмчийн үзлэг" },
+};
+const slots = [{ startTime: "09:00", endTime: "09:30", status: "BOOKED" }];
+
+before(async () => {
+  const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost:3000" });
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.window.document,
+    HTMLElement: dom.window.HTMLElement,
+    HTMLInputElement: dom.window.HTMLInputElement,
+    FormData: dom.window.FormData,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+  testing = await import("@testing-library/react");
+});
+
+afterEach(() => {
+  testing.cleanup();
+  globalThis.fetch = originalFetch;
+});
+
+function mockAvailability() {
+  const requests: {
+    url: string;
+    signal: AbortSignal | null | undefined;
+    resolve: (response: Response) => void;
+    reject: (error: Error) => void;
+  }[] = [];
+  globalThis.fetch = (_url, init) => new Promise<Response>((resolve, reject) => {
+    requests.push({ url: String(_url), signal: init?.signal, resolve, reject });
+  });
+  return requests;
+}
+
+function mount(initialAppointments = [appointment]) {
+  const view = testing.render(<AppointmentsClient
+    initialDate="2026-09-28"
+    initialAppointments={initialAppointments}
+    doctors={[{ id: "doctor-uran", label: "Б. Уран" }, { id: "other-doctor", label: "Өөр эмч" }]}
+    services={[{ id: "service", label: "Хүүхдийн эмчийн үзлэг" }]}
+  />);
+  testing.fireEvent.click(view.getByRole("button", { name: "Шинэ захиалга" }));
+  testing.fireEvent.change(view.getByLabelText("Огноо"), { target: { value: "2026-09-28" } });
+  return view;
+}
+
+test("September 28, Uran, 09:00 is blocked immediately and after availability loads", async () => {
+  const requests = mockAvailability();
+  const view = mount();
+  const booked = view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement;
+  assert.equal(booked.disabled, true);
+  assert.ok(booked.className.includes("bg-amber-100"));
+  assert.equal((view.getByRole("button", { name: "Хадгалах" }) as HTMLButtonElement).disabled, true);
+
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: slots })));
+  assert.equal((view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement).disabled, true);
+  assert.equal((view.getByRole("button", { name: "09:30 сонгох" }) as HTMLButtonElement).disabled, false);
+  assert.ok(view.getByText("Энэ цаг захиалагдсан. Сонгох боломжгүй.").className.includes("text-red-600"));
+});
+
+test("failed availability never unlocks booked slots or submit, and retry recovers", async () => {
+  const requests = mockAvailability();
+  const view = mount();
+  await testing.act(async () => requests.at(-1)!.reject(new Error("Connection lost")));
+
+  assert.equal((view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement).disabled, true);
+  assert.equal((view.getByRole("button", { name: "09:30 сонгох" }) as HTMLButtonElement).disabled, true);
+  assert.equal((view.getByRole("button", { name: "Хадгалах" }) as HTMLButtonElement).disabled, true);
+  assert.match(view.getByRole("alert").textContent ?? "", /Connection lost/);
+
+  testing.fireEvent.click(view.getByRole("button", { name: "Дахин шалгах" }));
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: slots })));
+  assert.equal((view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement).disabled, true);
+  assert.equal((view.getByRole("button", { name: "09:30 сонгох" }) as HTMLButtonElement).disabled, false);
+  assert.equal((view.getByRole("button", { name: "Хадгалах" }) as HTMLButtonElement).disabled, false);
+});
+
+test("changing doctor/date blocks submission and ignores previous selection's late response", async () => {
+  const requests = mockAvailability();
+  const view = mount();
+  const oldDoctorRequest = requests.at(-1)!;
+  testing.fireEvent.change(view.getByLabelText("Эмч"), { target: { value: "other-doctor" } });
+  assert.equal((view.getByRole("button", { name: "Хадгалах" }) as HTMLButtonElement).disabled, true);
+  assert.equal(oldDoctorRequest.signal?.aborted, true);
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: [] })));
+  await testing.act(async () => oldDoctorRequest.resolve(Response.json({ appointments: slots })));
+  assert.equal((view.getByRole("button", { name: "09:00 сонгох" }) as HTMLButtonElement).disabled, false);
+
+  testing.fireEvent.change(view.getByLabelText("Огноо"), { target: { value: "2026-09-29" } });
+  assert.equal((view.getByRole("button", { name: "Хадгалах" }) as HTMLButtonElement).disabled, true);
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: [{ startTime: "09:15", endTime: "09:45", status: "BOOKED" }] })));
+  assert.equal((view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement).disabled, true);
+  assert.equal((view.getByRole("button", { name: "09:30 захиалагдсан" }) as HTMLButtonElement).disabled, true);
+});
+
+test("availability blocks bookings absent from the first page of the list", async () => {
+  const requests = mockAvailability();
+  const view = mount([]);
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: slots })));
+  assert.equal((view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement).disabled, true);
+});
+
+test("slot status colors preserve blocking rules and cancelled history cannot hide an active booking", async () => {
+  const requests = mockAvailability();
+  const view = mount([]);
+  const cases = [
+    { startTime: "08:30", endTime: "09:00", status: "BOOKED", color: "bg-amber-100", blocked: true },
+    { startTime: "09:00", endTime: "09:30", status: "CONFIRMED", color: "bg-cyan-100", blocked: true },
+    { startTime: "09:30", endTime: "10:00", status: "ARRIVED", color: "bg-blue-100", blocked: true },
+    { startTime: "10:30", endTime: "11:00", status: "CANCELLED", color: "bg-red-100", blocked: false },
+    { startTime: "11:00", endTime: "11:30", status: "NO_SHOW", color: "bg-slate-100", blocked: false },
+  ];
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({
+    appointments: [{ startTime: "09:00", endTime: "09:30", status: "CANCELLED" }, ...cases],
+  })));
+  for (const { startTime, color, blocked } of cases) {
+    const button = view.getByRole("button", { name: `${startTime} ${blocked ? "захиалагдсан" : "сонгох"}` }) as HTMLButtonElement;
+    assert.equal(button.disabled, blocked);
+    assert.ok(button.className.includes(color));
+  }
+  testing.fireEvent.click(view.getByRole("button", { name: "10:30 сонгох" }));
+  assert.equal(view.container.querySelector<HTMLInputElement>('input[name="startTime"]')!.value, "10:30");
+});
+
+test("a conflict created by another user refreshes availability and locks the newly booked time", async () => {
+  const requests = mockAvailability();
+  const view = mount([]);
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: [] })));
+  testing.fireEvent.click(view.getByRole("button", { name: "09:00 сонгох" }));
+  testing.fireEvent.change(view.getByLabelText("Өвчтөний нэр"), { target: { value: "Example" } });
+  testing.fireEvent.submit(view.getByLabelText("Өвчтөний нэр").closest("form")!);
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ error: "Already booked" }, { status: 409 })));
+  assert.equal((view.getByRole("button", { name: "Хадгалах" }) as HTMLButtonElement).disabled, true);
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: slots })));
+  assert.equal((view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement).disabled, true);
+  assert.equal(view.container.querySelector<HTMLInputElement>('input[name="startTime"]')!.value, "08:30");
+});
+
+test("daily list shows only the selected date and arrows load every booking across year boundaries", async () => {
+  const requests = mockAvailability();
+  const todayBooking = { ...appointment, id: "today", appointmentDate: "2026-01-01T00:00:00.000Z", patient: { ...appointment.patient, firstName: "Today patient" } };
+  const yesterdayBooking = { ...appointment, id: "yesterday", appointmentDate: "2025-12-31T00:00:00.000Z", patient: { ...appointment.patient, firstName: "Yesterday patient" } };
+  const view = testing.render(<DailyAppointments initialDate="2026-01-01" initialAppointments={[todayBooking, yesterdayBooking]} />);
+  assert.ok(view.getByText("Today patient"));
+  assert.equal(view.queryByText("Yesterday patient"), null);
+  assert.equal((view.getByLabelText("Огноогоор шүүх") as HTMLInputElement).value, "2026-01-01");
+
+  testing.fireEvent.click(view.getByRole("button", { name: "Өмнөх өдөр" }));
+  assert.equal((view.getByLabelText("Огноогоор шүүх") as HTMLInputElement).value, "2025-12-31");
+  assert.equal(view.queryByText("Today patient"), null);
+  assert.equal(requests.at(-1)!.url, "/api/appointments?date=2025-12-31");
+  const dayBookings = Array.from({ length: 105 }, (_, index) => ({ ...yesterdayBooking, id: `booking-${index}`, patient: { ...appointment.patient, firstName: `Patient ${index}` } }));
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: dayBookings })));
+  assert.equal(view.getAllByRole("row").length, 106);
+  assert.ok(view.getByText("Patient 104"));
+
+  testing.fireEvent.click(view.getByRole("button", { name: "Дараагийн өдөр" }));
+  assert.equal((view.getByLabelText("Огноогоор шүүх") as HTMLInputElement).value, "2026-01-01");
+  assert.equal(view.queryByText("Patient 104"), null);
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: [todayBooking] })));
+  assert.ok(view.getByText("Today patient"));
+});
+
+test("rapid day navigation ignores stale responses and a failed day cannot show another day's rows", async () => {
+  const requests = mockAvailability();
+  const view = testing.render(<DailyAppointments initialDate="2026-09-28" initialAppointments={[appointment]} />);
+  testing.fireEvent.click(view.getByRole("button", { name: "Дараагийн өдөр" }));
+  const oldRequest = requests.at(-1)!;
+  testing.fireEvent.click(view.getByRole("button", { name: "Дараагийн өдөр" }));
+  assert.equal(oldRequest.signal?.aborted, true);
+  await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: [] })));
+  await testing.act(async () => oldRequest.resolve(Response.json({ appointments: [{ ...appointment, appointmentDate: "2026-09-29T00:00:00.000Z" }] })));
+  assert.equal(view.queryByText("Example"), null);
+  assert.ok(view.getByText("Энэ өдөр захиалга байхгүй."));
+
+  testing.fireEvent.click(view.getByRole("button", { name: "Дараагийн өдөр" }));
+  await testing.act(async () => requests.at(-1)!.reject(new Error("Day lookup failed")));
+  assert.equal(view.queryByText("Example"), null);
+  assert.match(view.getByRole("alert").textContent ?? "", /Day lookup failed/);
+  assert.equal((view.getByLabelText("Огноогоор шүүх") as HTMLInputElement).value, "2026-10-01");
+});

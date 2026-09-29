@@ -1,28 +1,27 @@
-import { CalendarDays, Users, Stethoscope, Building2 } from "lucide-react";
+import { CalendarDays, Users, Stethoscope } from "lucide-react";
 
+import { DashboardSchedule } from "@/components/appointments/dashboard-schedule";
+import { getDailyAppointments, getDoctorDailySchedules } from "@/lib/appointment-queries";
+import { dateFromValue, nextDay, todayValue } from "@/lib/appointments";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 
-async function getDashboardStats() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+async function getDashboardStats(dateValue: string) {
+  const today = dateFromValue(dateValue)!;
+  const appointmentDate = { gte: today, lt: nextDay(today) };
 
-  const [totals, todayCount, doctors, departments] = await Promise.all([
+  const [totals, todayCount] = await Promise.all([
     prisma.appointment.groupBy({
+      where: { appointmentDate },
       by: ["status"],
       _count: { _all: true },
     }),
     prisma.appointment.count({
-      where: { appointmentDate: { gte: today, lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) } },
+      where: { appointmentDate },
     }),
-    prisma.doctor.count({ where: { isActive: true } }),
-    prisma.department.count({ where: { isActive: true } }),
   ]);
 
   return {
-    totalAppointments: totals.reduce((sum, item) => sum + item._count._all, 0),
-    activeDoctors: doctors,
-    activeDepartments: departments,
     byStatus: Object.fromEntries(totals.map((item) => [item.status, item._count._all])),
     todayCount,
   };
@@ -30,13 +29,17 @@ async function getDashboardStats() {
 
 export default async function DashboardPage() {
   await requireAuth();
-  const stats = await getDashboardStats();
+  const initialDate = todayValue();
+  const [stats, appointments, doctorSchedules] = await Promise.all([
+    getDashboardStats(initialDate),
+    getDailyAppointments(initialDate),
+    getDoctorDailySchedules(initialDate),
+  ]);
 
   const cards = [
     { title: "Өнөөдрийн цаг", value: stats.todayCount ?? 0, icon: CalendarDays },
     { title: "Захиалсан", value: stats.byStatus.BOOKED ?? 0, icon: Users },
     { title: "Баталгаажсан", value: stats.byStatus.CONFIRMED ?? 0, icon: Stethoscope },
-    { title: "Эмчид бүртгэлтэй", value: stats.activeDoctors, icon: Building2 },
   ];
 
   return (
@@ -45,7 +48,7 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-bold text-slate-900">Хяналтын самбар</h1>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.map(({ title, value, icon: Icon }) => (
           <div key={title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
@@ -60,6 +63,8 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
+
+      <DashboardSchedule initialDate={initialDate} initialAppointments={appointments} initialDoctorSchedules={doctorSchedules} />
     </div>
   );
 }

@@ -22,6 +22,15 @@ export async function createSessionToken(user: SessionUser) {
     .sign(encodedSecret);
 }
 
+export async function createStaffAccessToken(userId: string) {
+  return await new SignJWT({ scope: "staff-access-v2" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(userId)
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(encodedSecret);
+}
+
 export async function verifySessionToken(token: string) {
   const { payload } = await jwtVerify(token, encodedSecret);
   return payload as {
@@ -88,4 +97,17 @@ export async function requireRole(...allowedRoles: Role[]) {
   }
 
   return user;
+}
+
+export async function hasStaffAccess(userId: string) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("staff-access")?.value;
+  if (!token) return false;
+
+  try {
+    const { payload } = await jwtVerify(token, encodedSecret);
+    return payload.sub === userId && payload.scope === "staff-access-v2";
+  } catch {
+    return false;
+  }
 }
