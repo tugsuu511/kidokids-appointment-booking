@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { CalendarDays, LayoutDashboard, UserRoundCog } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
+import { AppointmentRealtimeListener } from "@/components/appointments/appointment-realtime-listener";
 
 const navItems = [
   { href: "/dashboard", label: "Хяналтын самбар", icon: LayoutDashboard },
@@ -34,6 +35,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <AppointmentRealtimeListener />
       <div className="flex min-h-screen">
         <aside className="w-72 shrink-0 border-r border-sky-100 bg-sky-50 p-5 text-sky-950">
           <div className="mb-8">

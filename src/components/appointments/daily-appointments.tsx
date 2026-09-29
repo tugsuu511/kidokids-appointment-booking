@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { appointmentChangedEventName, type AppointmentChangeEvent } from "@/components/appointments/appointment-realtime-listener";
 import { Input } from "@/components/ui/input";
 import { dateFromValue, formatAppointmentDate, shiftDate, statusLabels, statusStyles, todayValue, type Appointment, type DoctorDailySchedule } from "@/lib/appointments";
 
@@ -48,6 +49,15 @@ export function DailyAppointments({ initialDate, initialAppointments, selectedDa
       });
     return () => controller.abort();
   }, [date, onDoctorSchedulesChange, revision]);
+
+  useEffect(() => {
+    const onAppointmentChanged = (event: Event) => {
+      const change = (event as CustomEvent<AppointmentChangeEvent>).detail;
+      if (change?.appointmentDate === date) setRevision((value) => value + 1);
+    };
+    window.addEventListener(appointmentChangedEventName, onAppointmentChanged);
+    return () => window.removeEventListener(appointmentChangedEventName, onAppointmentChanged);
+  }, [date]);
 
   function changeDate(value: string) {
     if (!dateFromValue(value)) return;

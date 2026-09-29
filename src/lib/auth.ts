@@ -2,12 +2,19 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import type { Role, SessionUser } from "@/types/auth";
 
-const secret = process.env.JWT_SECRET ?? "development-secret-change-me";
-const encodedSecret = new TextEncoder().encode(secret);
+function getEncodedSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be configured on the production server.");
+  }
+
+  return new TextEncoder().encode(secret ?? "development-secret-change-me");
+}
 
 export async function createSessionToken(user: SessionUser) {
   return await new SignJWT({
@@ -19,7 +26,7 @@ export async function createSessionToken(user: SessionUser) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(encodedSecret);
+    .sign(getEncodedSecret());
 }
 
 export async function createStaffAccessToken(userId: string) {
@@ -28,11 +35,11 @@ export async function createStaffAccessToken(userId: string) {
     .setSubject(userId)
     .setIssuedAt()
     .setExpirationTime("15m")
-    .sign(encodedSecret);
+    .sign(getEncodedSecret());
 }
 
 export async function verifySessionToken(token: string) {
-  const { payload } = await jwtVerify(token, encodedSecret);
+  const { payload } = await jwtVerify(token, getEncodedSecret());
   return payload as {
     sub: string;
     username: string;
@@ -105,7 +112,7 @@ export async function hasStaffAccess(userId: string) {
   if (!token) return false;
 
   try {
-    const { payload } = await jwtVerify(token, encodedSecret);
+    const { payload } = await jwtVerify(token, getEncodedSecret());
     return payload.sub === userId && payload.scope === "staff-access-v2";
   } catch {
     return false;

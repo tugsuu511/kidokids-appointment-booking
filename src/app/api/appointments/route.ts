@@ -3,9 +3,12 @@ import { AppointmentStatus } from "@prisma/client";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth";
+import { publishAppointmentChange } from "@/lib/appointment-events";
 import { getDailyAppointments, getDoctorDailySchedules } from "@/lib/appointment-queries";
 import { dateFromValue, nextDay } from "@/lib/appointments";
 import { prisma } from "@/lib/prisma";
+
+export const runtime = "nodejs";
 
 const appointmentSchema = z.object({
   appointmentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -110,6 +113,12 @@ export async function POST(request: Request) {
         data: { appointmentDate: date, startTime, endTime, patientId: resolvedPatientId, doctorId, serviceId, notes: notes || null },
       });
     });
+    publishAppointmentChange({
+      appointmentId: appointment.id,
+      appointmentDate,
+      doctorId,
+      action: "created",
+    });
     return NextResponse.json({ appointment }, { status: 201 });
   } catch (error) {
     if (error instanceof AppointmentConflictError) {
@@ -154,6 +163,12 @@ export async function PATCH(request: Request) {
       }
 
       return tx.appointment.update({ where: { id: existing.id }, data: { status: status.data } });
+    });
+    publishAppointmentChange({
+      appointmentId: appointment.id,
+      appointmentDate: dateValue,
+      doctorId: appointment.doctorId,
+      action: "status-updated",
     });
     return NextResponse.json({ appointment });
   } catch (error) {

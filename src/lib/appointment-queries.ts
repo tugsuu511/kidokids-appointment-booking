@@ -1,5 +1,6 @@
 import { dateFromValue, nextDay, type Appointment, type DoctorDailySchedule } from "@/lib/appointments";
 import { prisma } from "@/lib/prisma";
+import "server-only";
 
 export async function getDailyAppointments(value: string): Promise<Appointment[]> {
   const date = dateFromValue(value);

@@ -2,13 +2,18 @@
   "name": "kidokids-appointment-booking",
   "version": "0.1.0",
   "private": true,
+  "description": "Kido Kids central appointment booking desktop client",
+  "author": "Kido Kids",
+  "main": "desktop/main.cjs",
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run db:generate && next build",
     "start": "next start",
+    "server:bundle": "npm run build && node scripts/prepare-server.mjs",
+    "desktop:build": "electron-builder --win nsis",
     "lint": "eslint .",
     "test": "tsx --test tests/*.test.tsx",
     "db:generate": "prisma generate",
@@ -47,11 +52,42 @@
     "@types/node": "^20.19.43",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.39.5",
     "eslint-config-next": "16.3.5",
     "jsdom": "^30.1.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.19.3",
     "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "mn.kidokids.appointments",
+    "productName": "Kido Kids Appointment",
+    "directories": {
+      "output": "release-desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "!node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/app-config.json",
+        "to": "app-config.json"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }

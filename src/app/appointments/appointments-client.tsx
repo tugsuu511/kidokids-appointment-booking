@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { DailyAppointments } from "@/components/appointments/daily-appointments";
+import { appointmentChangedEventName, type AppointmentChangeEvent } from "@/components/appointments/appointment-realtime-listener";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { statusLabels, type Appointment } from "@/lib/appointments";
@@ -76,6 +77,17 @@ export function AppointmentsClient({ initialDate, initialAppointments, doctors, 
     return () => controller.abort();
   }, [availabilityKey, date, doctorId, isOpen]);
 
+  useEffect(() => {
+    const onAppointmentChanged = (event: Event) => {
+      const change = (event as CustomEvent<AppointmentChangeEvent>).detail;
+      if (change?.appointmentDate === date && change.doctorId === doctorId) {
+        setAvailabilityVersion((version) => version + 1);
+      }
+    };
+    window.addEventListener(appointmentChangedEventName, onAppointmentChanged);
+    return () => window.removeEventListener(appointmentChangedEventName, onAppointmentChanged);
+  }, [date, doctorId]);
+
   async function createAppointment(formData: FormData) {
     if (isSubmitting || !isAvailabilityReady || !selectedStartTime || isTimeBooked(selectedStartTime)) return;
 
@@ -89,7 +101,8 @@ export function AppointmentsClient({ initialDate, initialAppointments, doctors, 
         setError(data.error ?? "Захиалга үүсгэх үед алдаа гарлаа.");
         return;
       }
-      window.location.reload();
+      setIsOpen(false);
+      setAvailabilityVersion((version) => version + 1);
     } catch {
       setError("Захиалга үүсгэх үед алдаа гарлаа.");
     } finally {
