@@ -1,12 +1,26 @@
+export const appointmentStatusValues = [
+  "BOOKED",
+  "CONFIRMED",
+  "ARRIVED",
+  "COMPLETED",
+  "PAID",
+  "CANCELLED",
+  "NO_SHOW",
+] as const;
+
+export type AppointmentStatusValue = (typeof appointmentStatusValues)[number];
+
 export type Appointment = {
   id: string;
   appointmentDate: string;
   startTime: string;
   endTime: string;
-  status: string;
+  status: AppointmentStatusValue;
   patient: { firstName: string; lastName: string; phone: string };
   doctor: { id: string; fullName: string };
-  service: { name: string };
+  service: { name: string; price?: string };
+  visitRecord?: { note: string; updatedAt: string } | null;
+  paymentOrder?: { id: string; amount: string; status: string; description: string | null } | null;
 };
 
 export type DoctorDailySchedule = {
@@ -15,21 +29,49 @@ export type DoctorDailySchedule = {
   appointments: { id: string; startTime: string; endTime: string }[];
 };
 
-export const statusLabels: Record<string, string> = {
+export const statusLabels: Record<AppointmentStatusValue, string> = {
   BOOKED: "Захиалсан",
   CONFIRMED: "Баталгаажсан",
   ARRIVED: "Ирсэн",
+  COMPLETED: "Дууссан",
+  PAID: "Төлбөр төлөгдсөн",
   CANCELLED: "Цуцалсан",
   NO_SHOW: "Ирээгүй",
 };
 
-export const statusStyles: Record<string, string> = {
+export const statusStyles: Record<AppointmentStatusValue, string> = {
   BOOKED: "bg-amber-50 text-amber-700",
   CONFIRMED: "bg-cyan-50 text-cyan-700",
   ARRIVED: "bg-blue-50 text-blue-700",
+  COMPLETED: "bg-emerald-50 text-emerald-700",
+  PAID: "bg-teal-50 text-teal-700",
   CANCELLED: "bg-red-50 text-red-700",
   NO_SHOW: "bg-slate-100 text-slate-600",
 };
+
+const appointmentStatusTransitions: Record<AppointmentStatusValue, readonly AppointmentStatusValue[]> = {
+  BOOKED: ["CONFIRMED", "CANCELLED", "NO_SHOW"],
+  CONFIRMED: ["ARRIVED", "CANCELLED", "NO_SHOW"],
+  ARRIVED: ["COMPLETED"],
+  COMPLETED: ["PAID"],
+  PAID: [],
+  CANCELLED: [],
+  NO_SHOW: [],
+};
+
+export function canTransitionAppointmentStatus(current: AppointmentStatusValue, next: AppointmentStatusValue) {
+  return current === next || appointmentStatusTransitions[current].includes(next);
+}
+
+export function appointmentStatusOptions(current: AppointmentStatusValue) {
+  return [current, ...appointmentStatusTransitions[current]];
+}
+
+export function manuallySelectableAppointmentStatusOptions(current: AppointmentStatusValue) {
+  return appointmentStatusOptions(current).filter(
+    (status) => status === current || (status !== "COMPLETED" && status !== "PAID"),
+  );
+}
 
 export function todayValue() {
   const parts = new Intl.DateTimeFormat("en", {

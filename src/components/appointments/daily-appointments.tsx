@@ -6,7 +6,18 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appointmentChangedEventName, type AppointmentChangeEvent } from "@/components/appointments/appointment-realtime-listener";
 import { Input } from "@/components/ui/input";
-import { dateFromValue, formatAppointmentDate, shiftDate, statusLabels, statusStyles, todayValue, type Appointment, type DoctorDailySchedule } from "@/lib/appointments";
+import {
+  dateFromValue,
+  formatAppointmentDate,
+  manuallySelectableAppointmentStatusOptions,
+  shiftDate,
+  statusLabels,
+  statusStyles,
+  todayValue,
+  type Appointment,
+  type AppointmentStatusValue,
+  type DoctorDailySchedule,
+} from "@/lib/appointments";
 
 type DayResult = { date: string; appointments: Appointment[]; error: string };
 
@@ -15,7 +26,7 @@ export function DailyAppointments({ initialDate, initialAppointments, selectedDa
   initialAppointments: Appointment[];
   selectedDate?: string;
   editable?: boolean;
-  onStatusChange?: (id: string, status: string) => void;
+  onStatusChange?: (id: string, status: AppointmentStatusValue) => void;
   onDateChange?: (date: string) => void;
   onDoctorSchedulesChange?: (date: string, schedules: DoctorDailySchedule[]) => void;
 }) {
@@ -66,7 +77,7 @@ export function DailyAppointments({ initialDate, initialAppointments, selectedDa
     onDateChange?.(value);
   }
 
-  async function updateStatus(id: string, status: string) {
+  async function updateStatus(id: string, status: AppointmentStatusValue) {
     setUpdatingId(id);
     setStatusError("");
     try {
@@ -109,7 +120,10 @@ export function DailyAppointments({ initialDate, initialAppointments, selectedDa
               <td className="px-4 py-3"><p className="font-medium text-slate-900">{appointment.patient.lastName} {appointment.patient.firstName}</p><p className="text-xs text-slate-500">{appointment.patient.phone}</p></td>
               <td className="px-4 py-3 text-slate-700">{appointment.doctor.fullName}</td>
               <td className="px-4 py-3 text-slate-700">{appointment.service.name}</td>
-              <td className="px-4 py-3">{editable ? <select value={appointment.status} disabled={updatingId !== null} onChange={(event) => void updateStatus(appointment.id, event.target.value)} className={`rounded-full border-0 px-3 py-1 text-xs font-medium ${statusStyles[appointment.status] ?? "bg-slate-100 text-slate-700"}`} aria-label="Захиалгын төлөв">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : <span className={`rounded-full px-3 py-1 text-xs font-medium ${statusStyles[appointment.status] ?? "bg-slate-100 text-slate-700"}`}>{statusLabels[appointment.status] ?? "Төлөв сонгох"}</span>}</td>
+              <td className="px-4 py-3">{editable ? (() => {
+                const options = manuallySelectableAppointmentStatusOptions(appointment.status);
+                return <select value={appointment.status} disabled={updatingId !== null || options.length === 1} onChange={(event) => void updateStatus(appointment.id, event.target.value as AppointmentStatusValue)} className={`rounded-full border-0 px-3 py-1 text-xs font-medium ${statusStyles[appointment.status]}`} aria-label="Захиалгын төлөв">{options.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}</select>;
+              })() : <span className={`rounded-full px-3 py-1 text-xs font-medium ${statusStyles[appointment.status]}`}>{statusLabels[appointment.status]}</span>}</td>
             </tr>)}
             {appointments.length === 0 ? <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-500">{!currentResult ? "Уншиж байна..." : currentResult.error ? "Захиалгын жагсаалтыг дахин шалгана уу." : "Энэ өдөр захиалга байхгүй."}</td></tr> : null}
           </tbody>

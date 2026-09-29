@@ -6,7 +6,7 @@ export type AppointmentChangeEvent = {
   appointmentId: string;
   appointmentDate: string;
   doctorId: string;
-  action: "created" | "status-updated";
+  action: "created" | "status-updated" | "payment-updated";
 };
 
 export const appointmentChangedEventName = "kidokids:appointment-changed";

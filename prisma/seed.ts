@@ -15,7 +15,7 @@ async function main() {
   await prisma.user.deleteMany();
 
   const adminPassword = await bcrypt.hash("Admin123!", 10);
-  const receptionistPassword = await bcrypt.hash("Reception123!", 10);
+  const managerPassword = await bcrypt.hash("Manager123!", 10);
   const doctorPassword = await bcrypt.hash("Doctor123!", 10);
 
   const admin = await prisma.user.create({
@@ -28,12 +28,12 @@ async function main() {
     },
   });
 
-  const receptionist = await prisma.user.create({
+  const manager = await prisma.user.create({
     data: {
-      username: "receptionist",
-      passwordHash: receptionistPassword,
-      fullName: "Ресепшн ажилтан",
-      role: UserRole.RECEPTIONIST,
+      username: "manager",
+      passwordHash: managerPassword,
+      fullName: "Manager",
+      role: UserRole.MANAGER,
       isActive: true,
     },
   });
@@ -57,6 +57,7 @@ async function main() {
       fullName: "Д. Наран",
       phone: "+976-99112233",
       room: "A-101",
+      userId: doctorUser.id,
       isActive: true,
     },
   });
@@ -174,7 +175,7 @@ async function main() {
   await prisma.auditLog.createMany({
     data: [
       { userId: admin.id, action: "login", entity: "User", entityId: admin.id, details: "Админ системд нэвтэрсэн" },
-      { userId: receptionist.id, action: "create appointment", entity: "Appointment", details: "Эхний цаг захиалга үүсгэв" },
+      { userId: manager.id, action: "create appointment", entity: "Appointment", details: "Эхний цаг захиалга үүсгэв" },
       { userId: doctorUser.id, action: "update appointment status", entity: "Appointment", details: "Ирсэн төлөвийг шинэчлэх" },
     ],
   });
@@ -189,7 +190,7 @@ async function main() {
   });
 
   console.log("Seed data inserted successfully.");
-  console.log("Demo logins: admin / Admin123!, receptionist / Reception123!, doctor / Doctor123!");
+  console.log("Demo logins: admin / Admin123!, manager / Manager123!, doctor / Doctor123!");
 }
 
 main()

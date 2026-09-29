@@ -3,9 +3,15 @@ import { AppointmentStatus } from "@prisma/client";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth";
+import { getDoctorForUser } from "@/lib/doctor-access";
 import { publishAppointmentChange } from "@/lib/appointment-events";
 import { getDailyAppointments, getDoctorDailySchedules } from "@/lib/appointment-queries";
-import { dateFromValue, nextDay } from "@/lib/appointments";
+import {
+  appointmentStatusValues,
+  canTransitionAppointmentStatus,
+  dateFromValue,
+  nextDay,
+} from "@/lib/appointments";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -22,23 +28,21 @@ const appointmentSchema = z.object({
   notes: z.string().trim().max(500).optional(),
 });
 
-const statusSchema = z.enum([
-  AppointmentStatus.BOOKED,
-  AppointmentStatus.CONFIRMED,
-  AppointmentStatus.ARRIVED,
-  AppointmentStatus.CANCELLED,
-  AppointmentStatus.NO_SHOW,
-]);
+const statusSchema = z.enum(appointmentStatusValues);
 const availabilitySchema = z.object({
   doctorId: z.string().min(1).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
 class AppointmentConflictError extends Error {}
+class AppointmentTransitionError extends Error {}
 
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Нэвтрэх шаардлагатай." }, { status: 401 });
+
+  const currentDoctor = await getDoctorForUser(user);
+  if (user.role === "DOCTOR" && !currentDoctor) return NextResponse.json({ error: "Таны хэрэглэгч эмчийн бүртгэлтэй холбогдоогүй байна." }, { status: 403 });
 
   const searchParams = new URL(request.url).searchParams;
   const parsed = availabilitySchema.safeParse({ doctorId: searchParams.get("doctorId") ?? undefined, date: searchParams.get("date") });
@@ -47,8 +51,16 @@ export async function GET(request: Request) {
   const appointmentDate = dateFromValue(parsed.data.date);
   if (!appointmentDate) return NextResponse.json({ error: "Огноо буруу байна." }, { status: 400 });
 
+  const doctorId = user.role === "DOCTOR" ? currentDoctor!.id : parsed.data.doctorId;
+  if (user.role === "DOCTOR" && parsed.data.doctorId && parsed.data.doctorId !== doctorId) return NextResponse.json({ error: "Бусад эмчийн цагийн мэдээлэл харах эрхгүй." }, { status: 403 });
+
   try {
-    if (!parsed.data.doctorId) {
+    if (user.role === "DOCTOR") {
+      const appointments = await getDailyAppointments(parsed.data.date, currentDoctor!.id);
+      return NextResponse.json({ appointments }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (!doctorId) {
       const [appointments, doctorSchedules] = await Promise.all([
         getDailyAppointments(parsed.data.date),
         getDoctorDailySchedules(parsed.data.date),
@@ -58,7 +70,7 @@ export async function GET(request: Request) {
 
     const appointments = await prisma.appointment.findMany({
       where: {
-        doctorId: parsed.data.doctorId,
+        doctorId,
         appointmentDate: { gte: appointmentDate, lt: nextDay(appointmentDate) },
       },
       select: { startTime: true, endTime: true, status: true },
@@ -75,6 +87,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Нэвтрэх шаардлагатай." }, { status: 401 });
+  if (user.role === "DOCTOR") return NextResponse.json({ error: "Эмч зөвхөн өөрийн үзлэгээс давтан цаг үүсгэнэ үү." }, { status: 403 });
 
   try {
     const parsed = appointmentSchema.safeParse(await request.json());
@@ -110,7 +123,7 @@ export async function POST(request: Request) {
       })).id;
 
       return tx.appointment.create({
-        data: { appointmentDate: date, startTime, endTime, patientId: resolvedPatientId, doctorId, serviceId, notes: notes || null },
+        data: { appointmentDate: date, startTime, endTime, patientId: resolvedPatientId, doctorId, serviceId, notes: notes || null, status: AppointmentStatus.BOOKED },
       });
     });
     publishAppointmentChange({
@@ -142,27 +155,29 @@ export async function PATCH(request: Request) {
     const existing = await prisma.appointment.findUnique({ where: { id: body.id } });
     if (!existing) return NextResponse.json({ error: "Захиалга олдсонгүй." }, { status: 404 });
 
+    if (status.data === AppointmentStatus.COMPLETED) {
+      return NextResponse.json({ error: "Үзлэгийг дуусгахдаа эмч тэмдэглэл болон төлбөрийн даалгаврыг хамт хадгална." }, { status: 409 });
+    }
+    if (status.data === AppointmentStatus.PAID) {
+      return NextResponse.json({ error: "Төлбөр төлөгдсөнийг төлбөрийн хэсгээс баталгаажуулна." }, { status: 409 });
+    }
+
+    const currentDoctor = await getDoctorForUser(user);
+    if (user.role === "DOCTOR" && (!currentDoctor || existing.doctorId !== currentDoctor.id)) {
+      return NextResponse.json({ error: "Зөвхөн өөрийн цагийн төлвийг өөрчилнө үү." }, { status: 403 });
+    }
+
     const dateValue = existing.appointmentDate.toISOString().slice(0, 10);
-    const date = dateFromValue(dateValue)!;
     const appointment = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.doctorId}), hashtext(${dateValue}))`;
-
-      // Reopening a cancelled booking must obey the same overlap rule as creating one.
-      if (status.data !== AppointmentStatus.CANCELLED && status.data !== AppointmentStatus.NO_SHOW) {
-        const conflict = await tx.appointment.findFirst({
-          where: {
-            id: { not: existing.id },
-            doctorId: existing.doctorId,
-            appointmentDate: { gte: date, lt: nextDay(date) },
-            status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW] },
-            startTime: { lt: existing.endTime },
-            endTime: { gt: existing.startTime },
-          },
-        });
-        if (conflict) throw new AppointmentConflictError();
+      const current = await tx.appointment.findUnique({ where: { id: existing.id } });
+      if (!current || !canTransitionAppointmentStatus(current.status, status.data)) {
+        throw new AppointmentTransitionError();
       }
 
-      return tx.appointment.update({ where: { id: existing.id }, data: { status: status.data } });
+      return current.status === status.data
+        ? current
+        : tx.appointment.update({ where: { id: current.id }, data: { status: status.data } });
     });
     publishAppointmentChange({
       appointmentId: appointment.id,
@@ -172,6 +187,9 @@ export async function PATCH(request: Request) {
     });
     return NextResponse.json({ appointment });
   } catch (error) {
+    if (error instanceof AppointmentTransitionError) {
+      return NextResponse.json({ error: "Төлөвийг зөвхөн дараагийн зөвшөөрөгдсөн шат руу шилжүүлнэ." }, { status: 409 });
+    }
     if (error instanceof AppointmentConflictError) {
       return NextResponse.json({ error: "Энэ эмчийн тухайн цаг захиалагдсан тул төлөвийг өөрчлөх боломжгүй." }, { status: 409 });
     }

@@ -10,7 +10,7 @@ datasource db {
 
 enum UserRole {
   ADMIN
-  RECEPTIONIST
+  MANAGER
   DOCTOR
 }
 
@@ -25,8 +25,15 @@ enum AppointmentStatus {
   CONFIRMED
   ARRIVED
   COMPLETED
+  PAID
   CANCELLED
   NO_SHOW
+}
+
+enum PaymentOrderStatus {
+  PENDING
+  PAID
+  CANCELLED
 }
 
 model User {
@@ -40,6 +47,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   auditLogs AuditLog[]
+  doctor    Doctor?
 }
 
 model Department {
@@ -56,11 +64,14 @@ model Doctor {
   fullName     String
   phone        String
   room         String?
+  userId       String?         @unique
+  user         User?           @relation(fields: [userId], references: [id])
   isActive     Boolean         @default(true)
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   schedules    DoctorSchedule[]
   appointments Appointment[]
+  visitRecords VisitRecord[]
 }
 
 model Patient {
@@ -119,16 +130,49 @@ model Appointment {
   serviceId       String
   status          AppointmentStatus @default(BOOKED)
   notes           String?
+  followUpOfId    String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
   patient Patient @relation(fields: [patientId], references: [id])
   doctor  Doctor  @relation(fields: [doctorId], references: [id])
   service Service @relation(fields: [serviceId], references: [id])
+  visitRecord VisitRecord?
+  paymentOrder PaymentOrder?
+  followUpOf Appointment? @relation("FollowUpAppointments", fields: [followUpOfId], references: [id])
+  followUps Appointment[] @relation("FollowUpAppointments")
 
   @@index([appointmentDate])
   @@index([doctorId, appointmentDate])
   @@index([patientId])
+  @@index([followUpOfId])
+}
+
+model VisitRecord {
+  id            String      @id @default(cuid())
+  appointmentId String      @unique
+  doctorId      String
+  note          String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId, updatedAt])
+}
+
+model PaymentOrder {
+  id            String             @id @default(cuid())
+  appointmentId String             @unique
+  amount        Decimal            @db.Decimal(10, 2)
+  description   String?
+  status        PaymentOrderStatus @default(PENDING)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  @@index([status, createdAt])
 }
 
 model AuditLog {

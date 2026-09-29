@@ -4,7 +4,7 @@ export type AppointmentChange = {
   appointmentId: string;
   appointmentDate: string;
   doctorId: string;
-  action: "created" | "status-updated";
+  action: "created" | "status-updated" | "payment-updated";
 };
 
 type Subscriber = (change: AppointmentChange) => void;

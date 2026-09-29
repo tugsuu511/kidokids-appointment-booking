@@ -4,10 +4,16 @@ import { JSDOM } from "jsdom";
 
 import { AppointmentsClient } from "../src/app/appointments/appointments-client";
 import { DailyAppointments } from "../src/components/appointments/daily-appointments";
+import {
+  appointmentStatusOptions,
+  canTransitionAppointmentStatus,
+  manuallySelectableAppointmentStatusOptions,
+  type Appointment,
+} from "../src/lib/appointments";
 
 let testing: typeof import("@testing-library/react");
 const originalFetch = globalThis.fetch;
-const appointment = {
+const appointment: Appointment = {
   id: "existing-booking",
   appointmentDate: "2026-09-28T16:00:00.000Z",
   startTime: "09:00",
@@ -62,6 +68,18 @@ function mount(initialAppointments = [appointment]) {
   testing.fireEvent.change(view.getByLabelText("Огноо"), { target: { value: "2026-09-28" } });
   return view;
 }
+
+test("appointment statuses follow one forward-only workflow", () => {
+  assert.deepEqual(appointmentStatusOptions("BOOKED"), ["BOOKED", "CONFIRMED", "CANCELLED", "NO_SHOW"]);
+  assert.deepEqual(appointmentStatusOptions("CONFIRMED"), ["CONFIRMED", "ARRIVED", "CANCELLED", "NO_SHOW"]);
+  assert.deepEqual(appointmentStatusOptions("ARRIVED"), ["ARRIVED", "COMPLETED"]);
+  assert.deepEqual(appointmentStatusOptions("COMPLETED"), ["COMPLETED", "PAID"]);
+  assert.deepEqual(appointmentStatusOptions("PAID"), ["PAID"]);
+  assert.equal(canTransitionAppointmentStatus("BOOKED", "ARRIVED"), false);
+  assert.equal(canTransitionAppointmentStatus("COMPLETED", "ARRIVED"), false);
+  assert.deepEqual(manuallySelectableAppointmentStatusOptions("ARRIVED"), ["ARRIVED"]);
+  assert.deepEqual(manuallySelectableAppointmentStatusOptions("COMPLETED"), ["COMPLETED"]);
+});
 
 test("September 28, Uran, 09:00 is blocked immediately and after availability loads", async () => {
   const requests = mockAvailability();
