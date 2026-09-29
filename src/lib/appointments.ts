@@ -6,7 +6,9 @@ export type Appointment = {
   status: string;
   patient: { firstName: string; lastName: string; phone: string };
   doctor: { id: string; fullName: string };
-  service: { name: string };
+  service: { name: string; price?: string };
+  visitRecord?: { note: string; updatedAt: string } | null;
+  paymentOrder?: { id: string; amount: string; status: string; description: string | null } | null;
 };
 
 export type DoctorDailySchedule = {
@@ -19,6 +21,7 @@ export const statusLabels: Record<string, string> = {
   BOOKED: "Захиалсан",
   CONFIRMED: "Баталгаажсан",
   ARRIVED: "Ирсэн",
+  COMPLETED: "Дууссан",
   CANCELLED: "Цуцалсан",
   NO_SHOW: "Ирээгүй",
 };
@@ -27,6 +30,7 @@ export const statusStyles: Record<string, string> = {
   BOOKED: "bg-amber-50 text-amber-700",
   CONFIRMED: "bg-cyan-50 text-cyan-700",
   ARRIVED: "bg-blue-50 text-blue-700",
+  COMPLETED: "bg-emerald-50 text-emerald-700",
   CANCELLED: "bg-red-50 text-red-700",
   NO_SHOW: "bg-slate-100 text-slate-600",
 };

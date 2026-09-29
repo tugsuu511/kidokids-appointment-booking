@@ -3,8 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, LayoutDashboard, UserRoundCog } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { CalendarDays, LayoutDashboard, Stethoscope, UserRoundCog } from "lucide-react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { AppointmentRealtimeListener } from "@/components/appointments/appointment-realtime-listener";
 
 const navItems = [
@@ -13,9 +13,19 @@ const navItems = [
   { href: "/doctors", label: "Ажилтны бүртгэл", icon: UserRoundCog },
 ];
 
+type SessionUser = { fullName: string; role: "ADMIN" | "RECEPTIONIST" | "DOCTOR" };
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [user, setUser] = useState<SessionUser | null>(null);
+
+  useEffect(() => {
+    void fetch("/api/auth/session", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : { user: null })
+      .then((data) => setUser(data.user ?? null))
+      .catch(() => setUser(null));
+  }, [pathname]);
 
   async function navigateFromStaffRegistry(event: MouseEvent<HTMLAnchorElement>, href: string) {
     if (!pathname.startsWith("/doctors") || href === "/doctors") return;
@@ -50,7 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="space-y-2">
-            {navItems.map(({ href, label, icon: Icon }) => (
+            {(user?.role === "DOCTOR" ? [{ href: "/doctor", label: "Миний үзлэгүүд", icon: Stethoscope }] : navItems).map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
@@ -71,7 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <p className="text-sm text-slate-500">Эмнэлгийн удирдлага</p>
             </div>
             <div className="flex items-center gap-3">
-              <span className="rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">ADMIN</span>
+              <span className="rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">{user ? `${user.fullName} · ${user.role}` : "..."}</span>
               <Link href="/api/auth/logout" className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
                 Гарах
               </Link>

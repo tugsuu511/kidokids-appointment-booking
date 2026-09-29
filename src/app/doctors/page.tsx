@@ -24,19 +24,13 @@ export default async function DoctorsPage() {
 
   const doctors = await prisma.doctor.findMany({
     orderBy: { fullName: "asc" },
-    select: {
-      id: true,
-      fullName: true,
-      phone: true,
-      room: true,
-      isActive: true,
-    },
+    select: { id: true, fullName: true, phone: true, room: true, isActive: true, userId: true, user: { select: { id: true, fullName: true, username: true } } },
   });
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-2xl font-bold text-slate-900">Ажилтны бүртгэл</h1>
-      <p className="mt-2 text-slate-600">Эмч нэмэх, засах, идэвхтэй төлөв өөрчлөх болон устгах боломжтой.</p>
+      <p className="mt-2 text-slate-600">Эмчийн бүртгэл болон тусдаа нэвтрэх эрхийг хамтад нь үүсгэж, засах боломжтой.</p>
       <DoctorsClient initialDoctors={doctors} />
       <StaffPasswordForm />
     </div>

@@ -46,7 +46,7 @@ export function LoginForm() {
         throw new Error(data.error ?? "Нэвтрэх үед алдаа гарлаа.");
       }
 
-      router.push("/dashboard");
+      router.push(data.redirectTo ?? "/dashboard");
       router.refresh();
     } catch (error) {
       setServerError(error instanceof Error ? error.message : "Нэвтрэх үед алдаа гарлаа.");

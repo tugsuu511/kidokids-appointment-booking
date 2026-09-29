@@ -57,6 +57,7 @@ async function main() {
       fullName: "Д. Наран",
       phone: "+976-99112233",
       room: "A-101",
+      userId: doctorUser.id,
       isActive: true,
     },
   });

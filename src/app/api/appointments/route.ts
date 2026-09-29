@@ -3,6 +3,7 @@ import { AppointmentStatus } from "@prisma/client";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth";
+import { getDoctorForUser } from "@/lib/doctor-access";
 import { publishAppointmentChange } from "@/lib/appointment-events";
 import { getDailyAppointments, getDoctorDailySchedules } from "@/lib/appointment-queries";
 import { dateFromValue, nextDay } from "@/lib/appointments";
@@ -26,6 +27,7 @@ const statusSchema = z.enum([
   AppointmentStatus.BOOKED,
   AppointmentStatus.CONFIRMED,
   AppointmentStatus.ARRIVED,
+  AppointmentStatus.COMPLETED,
   AppointmentStatus.CANCELLED,
   AppointmentStatus.NO_SHOW,
 ]);
@@ -40,6 +42,9 @@ export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Нэвтрэх шаардлагатай." }, { status: 401 });
 
+  const currentDoctor = await getDoctorForUser(user);
+  if (user.role === "DOCTOR" && !currentDoctor) return NextResponse.json({ error: "Таны хэрэглэгч эмчийн бүртгэлтэй холбогдоогүй байна." }, { status: 403 });
+
   const searchParams = new URL(request.url).searchParams;
   const parsed = availabilitySchema.safeParse({ doctorId: searchParams.get("doctorId") ?? undefined, date: searchParams.get("date") });
   if (!parsed.success) return NextResponse.json({ error: "Хайлтын мэдээлэл буруу байна." }, { status: 400 });
@@ -47,8 +52,16 @@ export async function GET(request: Request) {
   const appointmentDate = dateFromValue(parsed.data.date);
   if (!appointmentDate) return NextResponse.json({ error: "Огноо буруу байна." }, { status: 400 });
 
+  const doctorId = user.role === "DOCTOR" ? currentDoctor!.id : parsed.data.doctorId;
+  if (user.role === "DOCTOR" && parsed.data.doctorId && parsed.data.doctorId !== doctorId) return NextResponse.json({ error: "Бусад эмчийн цагийн мэдээлэл харах эрхгүй." }, { status: 403 });
+
   try {
-    if (!parsed.data.doctorId) {
+    if (user.role === "DOCTOR") {
+      const appointments = await getDailyAppointments(parsed.data.date, currentDoctor!.id);
+      return NextResponse.json({ appointments }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (!doctorId) {
       const [appointments, doctorSchedules] = await Promise.all([
         getDailyAppointments(parsed.data.date),
         getDoctorDailySchedules(parsed.data.date),
@@ -58,7 +71,7 @@ export async function GET(request: Request) {
 
     const appointments = await prisma.appointment.findMany({
       where: {
-        doctorId: parsed.data.doctorId,
+        doctorId,
         appointmentDate: { gte: appointmentDate, lt: nextDay(appointmentDate) },
       },
       select: { startTime: true, endTime: true, status: true },
@@ -75,6 +88,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Нэвтрэх шаардлагатай." }, { status: 401 });
+  if (user.role === "DOCTOR") return NextResponse.json({ error: "Эмч зөвхөн өөрийн үзлэгээс давтан цаг үүсгэнэ үү." }, { status: 403 });
 
   try {
     const parsed = appointmentSchema.safeParse(await request.json());
@@ -141,6 +155,11 @@ export async function PATCH(request: Request) {
     }
     const existing = await prisma.appointment.findUnique({ where: { id: body.id } });
     if (!existing) return NextResponse.json({ error: "Захиалга олдсонгүй." }, { status: 404 });
+
+    const currentDoctor = await getDoctorForUser(user);
+    if (user.role === "DOCTOR" && (!currentDoctor || existing.doctorId !== currentDoctor.id)) {
+      return NextResponse.json({ error: "Зөвхөн өөрийн цагийн төлвийг өөрчилнө үү." }, { status: 403 });
+    }
 
     const dateValue = existing.appointmentDate.toISOString().slice(0, 10);
     const date = dateFromValue(dateValue)!;

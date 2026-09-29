@@ -5,6 +5,7 @@ import { getDailyAppointments, getDoctorDailySchedules } from "@/lib/appointment
 import { dateFromValue, nextDay, todayValue } from "@/lib/appointments";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 async function getDashboardStats(dateValue: string) {
   const today = dateFromValue(dateValue)!;
@@ -28,7 +29,8 @@ async function getDashboardStats(dateValue: string) {
 }
 
 export default async function DashboardPage() {
-  await requireAuth();
+  const user = await requireAuth();
+  if (user.role === "DOCTOR") redirect("/doctor");
   const initialDate = todayValue();
   const [stats, appointments, doctorSchedules] = await Promise.all([
     getDashboardStats(initialDate),
