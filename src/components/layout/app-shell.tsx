@@ -3,13 +3,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, LayoutDashboard, Stethoscope, UserRoundCog } from "lucide-react";
+import { CalendarDays, LayoutDashboard, Stethoscope, UserRoundCog, UsersRound } from "lucide-react";
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { AppointmentRealtimeListener } from "@/components/appointments/appointment-realtime-listener";
 
 const adminNavItems = [
   { href: "/dashboard", label: "Хяналтын самбар", icon: LayoutDashboard },
   { href: "/appointments", label: "Цаг захиалга", icon: CalendarDays },
+  { href: "/patients", label: "Үйлчлүүлэгчид", icon: UsersRound },
   { href: "/doctors", label: "Ажилтны бүртгэл", icon: UserRoundCog },
 ];
 

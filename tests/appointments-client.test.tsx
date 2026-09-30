@@ -19,7 +19,17 @@ const appointment: Appointment = {
   startTime: "09:00",
   endTime: "09:30",
   status: "BOOKED",
-  patient: { firstName: "Example", lastName: "", phone: "" },
+  patient: {
+    id: "patient-example",
+    registerNo: null,
+    firstName: "Example",
+    lastName: "",
+    phone: "",
+    birthDate: null,
+    gender: null,
+    address: null,
+    notes: null,
+  },
   doctor: { id: "doctor-uran", fullName: "Б. Уран" },
   service: { name: "Хүүхдийн эмчийн үзлэг" },
 };

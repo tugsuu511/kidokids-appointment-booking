@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { AppointmentStatus } from "@prisma/client";
+import { AppointmentStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -13,6 +13,7 @@ import {
   nextDay,
 } from "@/lib/appointments";
 import { prisma } from "@/lib/prisma";
+import { normalizeRegisterNo, patientGenderValues } from "@/lib/patients";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,9 @@ const appointmentSchema = z.object({
   patientId: z.string().optional(),
   patientName: z.string().trim().min(2),
   patientPhone: z.string().trim().max(30).optional(),
+  patientRegisterNo: z.string().trim().max(20).optional(),
+  patientBirthDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal("")]).optional(),
+  patientGender: z.union([z.enum(patientGenderValues), z.literal("")]).optional(),
   doctorId: z.string().min(1),
   serviceId: z.string().min(1),
   notes: z.string().trim().max(500).optional(),
@@ -95,10 +99,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Захиалгын мэдээлэл буруу байна." }, { status: 400 });
     }
 
-    const { appointmentDate, startTime, endTime, patientId, patientName, patientPhone, doctorId, serviceId, notes } = parsed.data;
+    const {
+      appointmentDate,
+      startTime,
+      endTime,
+      patientId,
+      patientName,
+      patientPhone,
+      patientRegisterNo,
+      patientBirthDate,
+      patientGender,
+      doctorId,
+      serviceId,
+      notes,
+    } = parsed.data;
     const date = dateFromValue(appointmentDate);
     if (!date) return NextResponse.json({ error: "Огноо буруу байна." }, { status: 400 });
+    const birthDate = patientBirthDate ? dateFromValue(patientBirthDate) : null;
+    if (patientBirthDate && !birthDate) return NextResponse.json({ error: "Төрсөн огноо буруу байна." }, { status: 400 });
     const nextDate = nextDay(date);
+    const registerNo = patientRegisterNo ? normalizeRegisterNo(patientRegisterNo) : null;
 
     const nameParts = patientName.split(/\s+/);
     const firstName = nameParts[0];
@@ -118,8 +138,39 @@ export async function POST(request: Request) {
       });
       if (existing) throw new AppointmentConflictError();
 
-      const resolvedPatientId = patientId || (await tx.patient.findFirst({ where: { firstName, lastName, ...(patientPhone ? { phone: patientPhone } : {}) }, select: { id: true } }))?.id || (await tx.patient.create({
-        data: { firstName, lastName, phone: patientPhone || "-" },
+      let resolvedPatientId = patientId;
+      if (!resolvedPatientId && registerNo) {
+        const registeredPatient = await tx.patient.findFirst({
+          where: { registerNo: { equals: registerNo, mode: "insensitive" } },
+          select: { id: true },
+        });
+        resolvedPatientId = registeredPatient?.id;
+        if (registeredPatient && (patientPhone || birthDate || patientGender)) {
+          await tx.patient.update({
+            where: { id: registeredPatient.id },
+            data: {
+              ...(patientPhone ? { phone: patientPhone } : {}),
+              ...(birthDate ? { birthDate } : {}),
+              ...(patientGender ? { gender: patientGender } : {}),
+            },
+          });
+        }
+      }
+      if (!resolvedPatientId && !registerNo) {
+        resolvedPatientId = (await tx.patient.findFirst({
+          where: { firstName, lastName, ...(patientPhone ? { phone: patientPhone } : {}) },
+          select: { id: true },
+        }))?.id;
+      }
+      resolvedPatientId ||= (await tx.patient.create({
+        data: {
+          registerNo,
+          firstName,
+          lastName,
+          phone: patientPhone || "-",
+          birthDate,
+          gender: patientGender || null,
+        },
       })).id;
 
       return tx.appointment.create({
@@ -136,6 +187,9 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof AppointmentConflictError) {
       return NextResponse.json({ error: "Энэ эмчийн тухайн цаг захиалагдсан байна." }, { status: 409 });
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "Энэ РД өөр үйлчлүүлэгч дээр бүртгэлтэй байна." }, { status: 409 });
     }
     console.error("Create appointment failed:", error);
     return NextResponse.json({ error: "Захиалга үүсгэх үед алдаа гарлаа." }, { status: 500 });

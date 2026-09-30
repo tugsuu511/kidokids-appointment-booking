@@ -77,7 +77,6 @@ export function PaymentOrdersPanel({ initialOrders, initialPendingCount }: { ini
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 p-5">
         <div>
           <h2 id="payment-orders-heading" className="font-semibold text-slate-900">Төлбөрийн даалгавар</h2>
-          <p className="mt-1 text-sm text-slate-500">Эмчээс ирсэн төлбөрийг хүлээн аваад төлөгдсөн төлөвт шилжүүлнэ.</p>
         </div>
         <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700">
           {pendingCount} хүлээгдэж буй
@@ -120,9 +119,16 @@ export function PaymentOrdersPanel({ initialOrders, initialPendingCount }: { ini
                       {statusLabels[order.appointment.status]}
                     </span>
                     {order.status === "PENDING" ? (
-                      <Button type="button" size="sm" onClick={() => void markPaid(order)} disabled={updatingId !== null}>
+                      <Button
+                        type="button"
+                        size="icon"
+                        className="h-9 w-9"
+                        onClick={() => void markPaid(order)}
+                        disabled={updatingId !== null}
+                        aria-label={updatingId === order.id ? "Шинэчилж байна..." : "Төлөгдсөн болгох"}
+                        title="Төлөгдсөн болгох"
+                      >
                         {updatingId === order.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                        {updatingId === order.id ? "Шинэчилж байна..." : "Төлөгдсөн болгох"}
                       </Button>
                     ) : (
                       null

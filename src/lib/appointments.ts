@@ -16,7 +16,17 @@ export type Appointment = {
   startTime: string;
   endTime: string;
   status: AppointmentStatusValue;
-  patient: { firstName: string; lastName: string; phone: string };
+  patient: {
+    id: string;
+    registerNo: string | null;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    birthDate: string | null;
+    gender: "MALE" | "FEMALE" | "OTHER" | null;
+    address: string | null;
+    notes: string | null;
+  };
   doctor: { id: string; fullName: string };
   service: { name: string; price?: string };
   visitRecord?: { note: string; updatedAt: string } | null;

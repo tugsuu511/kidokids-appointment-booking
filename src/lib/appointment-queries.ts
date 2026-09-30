@@ -15,7 +15,19 @@ export async function getDailyAppointments(value: string, doctorId?: string): Pr
       startTime: true,
       endTime: true,
       status: true,
-      patient: { select: { firstName: true, lastName: true, phone: true } },
+      patient: {
+        select: {
+          id: true,
+          registerNo: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          birthDate: true,
+          gender: true,
+          address: true,
+          notes: true,
+        },
+      },
       doctor: { select: { id: true, fullName: true } },
       service: { select: { name: true, price: true } },
       visitRecord: { select: { note: true, updatedAt: true } },
@@ -26,6 +38,10 @@ export async function getDailyAppointments(value: string, doctorId?: string): Pr
   return appointments.map((appointment) => ({
     ...appointment,
     appointmentDate: appointment.appointmentDate.toISOString(),
+    patient: {
+      ...appointment.patient,
+      birthDate: appointment.patient.birthDate?.toISOString().slice(0, 10) ?? null,
+    },
     visitRecord: appointment.visitRecord ? { ...appointment.visitRecord, updatedAt: appointment.visitRecord.updatedAt.toISOString() } : null,
     paymentOrder: appointment.paymentOrder ? { ...appointment.paymentOrder, amount: appointment.paymentOrder.amount.toString() } : null,
     service: { ...appointment.service, price: appointment.service.price.toString() },

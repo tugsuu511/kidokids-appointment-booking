@@ -6,6 +6,9 @@ import { ChevronLeft, ChevronRight, CreditCard, FileText, RefreshCw } from "luci
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { appointmentChangedEventName, type AppointmentChangeEvent } from "@/components/appointments/appointment-realtime-listener";
+import { PatientProfileForm } from "@/components/doctors/doctor-patient-tools";
+import { PatientDetailsDialog } from "@/components/patients/patient-details-dialog";
+import { PatientSearchPanel } from "@/components/patients/patient-search-panel";
 import {
   dateFromValue,
   formatAppointmentDate,
@@ -159,6 +162,8 @@ export function DoctorWorkspace({
       {error ? <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
       {success ? <p role="status" className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</p> : null}
 
+      <PatientSearchPanel />
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(380px,0.9fr)]">
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 p-4">
@@ -201,10 +206,15 @@ export function DoctorWorkspace({
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           {selected ? (
             <div key={selected.id} className="space-y-6">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">{selected.patient.lastName} {selected.patient.firstName}</h2>
-                <p className="text-sm text-slate-500">{selected.startTime} – {selected.endTime} · {selected.service.name}</p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">{selected.patient.lastName} {selected.patient.firstName}</h2>
+                  <p className="text-sm text-slate-500">{selected.startTime} – {selected.endTime} · {selected.service.name}</p>
+                </div>
+                <PatientDetailsDialog key={selected.patient.id} patientId={selected.patient.id} />
               </div>
+
+              <PatientProfileForm patient={selected.patient} disabled={saving} onSaved={() => load(date, selected.id)} />
 
               <label className="block text-sm font-medium text-slate-700">
                 Үзлэгийн төлөв

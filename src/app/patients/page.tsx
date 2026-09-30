@@ -1,8 +1,9 @@
-export default function PatientsPage() {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-bold text-slate-900">Өвчтөн</h1>
-      <p className="mt-2 text-slate-600">Өвчтөний бүртгэл, хайлт, мэдээлэл засах хэсэг.</p>
-    </div>
-  );
+import { PatientsClient } from "@/components/patients/patients-client";
+import { requireRole } from "@/lib/auth";
+import { listPatientsForUser } from "@/lib/patient-queries";
+
+export default async function PatientsPage() {
+  const user = await requireRole("ADMIN");
+  const result = await listPatientsForUser(user);
+  return <PatientsClient initialResult={result ?? { patients: [], page: 1, pageSize: 20, total: 0, totalPages: 1 }} />;
 }
