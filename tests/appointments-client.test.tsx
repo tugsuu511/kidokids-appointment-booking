@@ -57,12 +57,14 @@ afterEach(() => {
 function mockAvailability() {
   const requests: {
     url: string;
+    method: string;
+    body: RequestInit["body"];
     signal: AbortSignal | null | undefined;
     resolve: (response: Response) => void;
     reject: (error: Error) => void;
   }[] = [];
   globalThis.fetch = (_url, init) => new Promise<Response>((resolve, reject) => {
-    requests.push({ url: String(_url), signal: init?.signal, resolve, reject });
+    requests.push({ url: String(_url), method: init?.method ?? "GET", body: init?.body, signal: init?.signal, resolve, reject });
   });
   return requests;
 }
@@ -182,6 +184,49 @@ test("a conflict created by another user refreshes availability and locks the ne
   assert.equal((view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement).disabled, true);
   assert.equal(view.container.querySelector<HTMLInputElement>('input[name="startTime"]')!.value, "08:30");
 });
+
+for (const bookingDate of ["2026-09-28", "2026-10-01"]) {
+  test(`saving a booking for ${bookingDate} shows it immediately without a realtime event`, async () => {
+    const requests = mockAvailability();
+    const view = mount([]);
+    await testing.act(async () => requests[0].resolve(Response.json({ appointments: [] })));
+    if (bookingDate !== "2026-09-28") {
+      testing.fireEvent.change(view.getByLabelText("Огноо"), { target: { value: bookingDate } });
+    }
+    await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: [] })));
+    testing.fireEvent.change(view.getByLabelText("Өвчтөний нэр"), { target: { value: "New patient" } });
+    testing.fireEvent.click(view.getByRole("button", { name: "09:00 сонгох" }));
+    testing.fireEvent.submit(view.getByLabelText("Өвчтөний нэр").closest("form")!);
+
+    const saveRequest = requests.at(-1)!;
+    assert.equal(saveRequest.method, "POST");
+    const body = JSON.parse(String(saveRequest.body));
+    assert.equal(body.appointmentDate, bookingDate);
+    assert.equal(body.startTime, "09:00");
+    assert.equal(body.endTime, "09:30");
+    const requestCount = requests.length;
+    const created = {
+      ...appointment,
+      id: "new-booking",
+      appointmentDate: `${bookingDate}T00:00:00.000Z`,
+      patient: { ...appointment.patient, firstName: "New patient" },
+    };
+    await testing.act(async () => saveRequest.resolve(Response.json({ appointment: created }, { status: 201 })));
+
+    assert.equal(view.queryByLabelText("Өвчтөний нэр"), null);
+    const refreshRequest = requests.slice(requestCount).find((request) => request.url === `/api/appointments?date=${bookingDate}`);
+    assert.ok(refreshRequest, "a successful save must reload the booked day's list without waiting for SSE");
+    assert.equal((view.getByLabelText("Огноогоор шүүх") as HTMLInputElement).value, bookingDate);
+    await testing.act(async () => refreshRequest.resolve(Response.json({ appointments: [created] })));
+    assert.ok(view.getByText("New patient"));
+    assert.match(view.getByRole("status").textContent ?? "", /Захиалга амжилттай үүслээ/);
+
+    testing.fireEvent.click(view.getByRole("button", { name: "Шинэ захиалга" }));
+    assert.equal((view.getByLabelText("Огноо") as HTMLInputElement).value, bookingDate);
+    await testing.act(async () => requests.at(-1)!.resolve(Response.json({ appointments: slots })));
+    assert.equal((view.getByRole("button", { name: "09:00 захиалагдсан" }) as HTMLButtonElement).disabled, true);
+  });
+}
 
 test("daily list shows only the selected date and arrows load every booking across year boundaries", async () => {
   const requests = mockAvailability();

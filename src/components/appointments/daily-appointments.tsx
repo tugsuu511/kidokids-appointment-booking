@@ -21,10 +21,11 @@ import {
 
 type DayResult = { date: string; appointments: Appointment[]; error: string };
 
-export function DailyAppointments({ initialDate, initialAppointments, selectedDate, editable = false, onStatusChange, onDateChange, onDoctorSchedulesChange }: {
+export function DailyAppointments({ initialDate, initialAppointments, selectedDate, refreshVersion = 0, editable = false, onStatusChange, onDateChange, onDoctorSchedulesChange }: {
   initialDate: string;
   initialAppointments: Appointment[];
   selectedDate?: string;
+  refreshVersion?: number;
   editable?: boolean;
   onStatusChange?: (id: string, status: AppointmentStatusValue) => void;
   onDateChange?: (date: string) => void;
@@ -59,7 +60,7 @@ export function DailyAppointments({ initialDate, initialAppointments, selectedDa
         }));
       });
     return () => controller.abort();
-  }, [date, onDoctorSchedulesChange, revision]);
+  }, [date, onDoctorSchedulesChange, refreshVersion, revision]);
 
   useEffect(() => {
     const onAppointmentChanged = (event: Event) => {

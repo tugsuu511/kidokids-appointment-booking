@@ -7,7 +7,7 @@ import { DailyAppointments } from "@/components/appointments/daily-appointments"
 import { appointmentChangedEventName, type AppointmentChangeEvent } from "@/components/appointments/appointment-realtime-listener";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { statusLabels, type Appointment, type AppointmentStatusValue } from "@/lib/appointments";
+import { formatAppointmentDate, statusLabels, type Appointment, type AppointmentStatusValue } from "@/lib/appointments";
 
 type Option = { id: string; label: string };
 type SlotAppointment = { startTime: string; endTime: string; status: AppointmentStatusValue };
@@ -44,7 +44,10 @@ export function AppointmentsClient({ initialDate, initialAppointments, doctors, 
   const [availability, setAvailability] = useState<Availability | null>(null);
   const [availabilityVersion, setAvailabilityVersion] = useState(0);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [date, setDate] = useState(initialDate);
+  const [listDate, setListDate] = useState(initialDate);
+  const [listRefreshVersion, setListRefreshVersion] = useState(0);
   const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
   const [startTime, setStartTime] = useState("08:30");
   const availabilityKey = `${doctorId}:${date}:${availabilityVersion}`;
@@ -95,6 +98,7 @@ export function AppointmentsClient({ initialDate, initialAppointments, doctors, 
 
     setIsSubmitting(true);
     setError("");
+    setSuccess("");
     try {
       const response = await fetch("/api/appointments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(formData.entries())) });
       const data = await response.json();
@@ -103,6 +107,12 @@ export function AppointmentsClient({ initialDate, initialAppointments, doctors, 
         setError(data.error ?? "Захиалга үүсгэх үед алдаа гарлаа.");
         return;
       }
+      const bookedDate = String(formData.get("appointmentDate"));
+      setDate(bookedDate);
+      setListDate(bookedDate);
+      // Refresh our own save even when the realtime connection is unavailable.
+      setListRefreshVersion((version) => version + 1);
+      setSuccess(`Захиалга амжилттай үүслээ. ${formatAppointmentDate(bookedDate)} · ${formData.get("startTime")}`);
       setIsOpen(false);
       setAvailabilityVersion((version) => version + 1);
     } catch {
@@ -128,7 +138,7 @@ export function AppointmentsClient({ initialDate, initialAppointments, doctors, 
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><h1 className="text-3xl font-bold text-slate-900">Цаг захиалга</h1><Button onClick={() => { setAvailabilityVersion((version) => version + 1); setIsOpen((value) => !value); setError(""); }}><Plus className="h-4 w-4" /> Шинэ захиалга</Button></div>
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><h1 className="text-3xl font-bold text-slate-900">Цаг захиалга</h1><Button onClick={() => { setAvailabilityVersion((version) => version + 1); setIsOpen((value) => !value); setError(""); setSuccess(""); }}><Plus className="h-4 w-4" /> Шинэ захиалга</Button></div>
       {isOpen ? <form className="grid gap-4 rounded-xl border border-cyan-100 bg-cyan-50/60 p-5 md:grid-cols-2 xl:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void createAppointment(new FormData(event.currentTarget)); }}>
         <label className="text-sm font-medium text-slate-700">Өвчтөний нэр<Input name="patientName" autoComplete="off" placeholder="Жишээ: Бат Эрдэнэ" required className="mt-2" /></label>
         <label className="text-sm font-medium text-slate-700">Утас<Input name="patientPhone" type="tel" placeholder="99112233" className="mt-2" /></label>
@@ -169,8 +179,9 @@ export function AppointmentsClient({ initialDate, initialAppointments, doctors, 
         <label className="text-sm font-medium text-slate-700 md:col-span-2">Шинж тэмдэг, зовиур<Input name="notes" placeholder="Өвчтөний шинж тэмдэг, зовиурыг бичнэ үү" className="mt-2" /></label>
         <div className="flex items-end gap-2 xl:col-span-4"><Button type="submit" disabled={isSubmitting || !isAvailabilityReady || !selectedStartTime || isTimeBooked(selectedStartTime)}>{isSubmitting ? "Хадгалж байна..." : "Хадгалах"}</Button><Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Болих</Button></div>
       </form> : null}
-      {error ? <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
-      <DailyAppointments initialDate={initialDate} initialAppointments={initialAppointments} editable onDateChange={setDate} onStatusChange={(id, status) => {
+      {error ? <p role="alert" className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
+      {success ? <p role="status" className="rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</p> : null}
+      <DailyAppointments initialDate={initialDate} initialAppointments={initialAppointments} selectedDate={listDate} refreshVersion={listRefreshVersion} editable onDateChange={(value) => { setDate(value); setListDate(value); }} onStatusChange={(id, status) => {
         setAppointments((items) => items.map((item) => item.id === id ? { ...item, status } : item));
         setAvailabilityVersion((version) => version + 1);
       }} />
