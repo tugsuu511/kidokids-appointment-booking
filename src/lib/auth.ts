@@ -16,6 +16,10 @@ function getEncodedSecret() {
   return new TextEncoder().encode(secret ?? "development-secret-change-me");
 }
 
+export function assertAuthConfiguration() {
+  getEncodedSecret();
+}
+
 export async function createSessionToken(user: SessionUser) {
   return await new SignJWT({
     sub: user.id,
@@ -39,16 +43,37 @@ export async function createStaffAccessToken(userId: string) {
 }
 
 export async function verifySessionToken(token: string) {
-  const { payload } = await jwtVerify(token, getEncodedSecret());
-  return payload as {
-    sub: string;
-    username: string;
-    fullName: string;
-    role: Role;
-  };
+  const { payload } = await jwtVerify(token, getEncodedSecret(), {
+    algorithms: ["HS256"],
+  });
+
+  if (
+    typeof payload.sub !== "string" ||
+    typeof payload.username !== "string" ||
+    typeof payload.fullName !== "string" ||
+    !isRole(payload.role)
+  ) {
+    throw new Error("Invalid session payload.");
+  }
+
+  return {
+    id: payload.sub,
+    username: payload.username,
+    fullName: payload.fullName,
+    role: payload.role,
+  } satisfies SessionUser;
 }
 
-export async function getCurrentUser(): Promise<SessionUser | null> {
+function isRole(value: unknown): value is Role {
+  return value === "ADMIN" || value === "MANAGER" || value === "DOCTOR";
+}
+
+/**
+ * Fast, stateless authentication for page navigation and display-only session
+ * data. The signed token already contains the fields needed for these checks,
+ * so this must not wait on the remote database.
+ */
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get("session")?.value;
 
@@ -57,37 +82,44 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   }
 
   try {
-    const payload = await verifySessionToken(token);
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: {
-        id: true,
-        username: true,
-        fullName: true,
-        role: true,
-        isActive: true,
-      },
-    });
-
-    if (!user || !user.isActive) {
-      return null;
-    }
-
-    return {
-      id: user.id,
-      username: user.username,
-      fullName: user.fullName,
-      role: user.role,
-    };
+    return await verifySessionToken(token);
   } catch {
     return null;
   }
+});
+
+/**
+ * Database-backed authorization for APIs that read or mutate protected data.
+ * Database failures intentionally propagate as server errors instead of being
+ * misreported as an expired session.
+ */
+export async function getCurrentUser(): Promise<SessionUser | null> {
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: sessionUser.id },
+    select: {
+      id: true,
+      username: true,
+      fullName: true,
+      role: true,
+      isActive: true,
+    },
+  });
+
+  if (!user || !user.isActive) return null;
+
+  return {
+    id: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    role: user.role,
+  };
 }
 
-export const getCurrentUserCached = cache(getCurrentUser);
-
 export async function requireAuth() {
-  const user = await getCurrentUserCached();
+  const user = await getSessionUser();
 
   if (!user) {
     redirect("/login");

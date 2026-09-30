@@ -30,11 +30,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       : managerNavItems;
 
   useEffect(() => {
-    void fetch("/api/auth/session", { cache: "no-store" })
+    if (pathname === "/login" || user) return;
+
+    const controller = new AbortController();
+    void fetch("/api/auth/session", { cache: "no-store", signal: controller.signal })
       .then((response) => response.ok ? response.json() : { user: null })
       .then((data) => setUser(data.user ?? null))
-      .catch(() => setUser(null));
-  }, [pathname]);
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setUser(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [pathname, user]);
 
   async function navigateFromStaffRegistry(event: MouseEvent<HTMLAnchorElement>, href: string) {
     if (!pathname.startsWith("/doctors") || href === "/doctors") return;
@@ -44,7 +53,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       await fetch("/api/auth/staff-access", { method: "DELETE" });
     } finally {
       router.push(href);
-      router.refresh();
     }
   }
 

@@ -8,7 +8,7 @@ The appointment event stream is process-local Server-Sent Events (SSE). Run exac
 
 ## Deploy the server
 
-1. On the production server, set the values from `.env.production.example` in the host's protected environment. Do not copy this file to a Windows client.
+1. On the production server, set the values from `.env.production.example` in the host's protected environment. `.env.production.example` is only a template and is **not** loaded by the running server. `JWT_SECRET` must be a long random value, must stay unchanged across restarts, and must be identical on every server instance. Do not copy this file to a Windows client.
 2. Install production dependencies, generate Prisma Client, and create the self-contained Node artifact:
 
    ```powershell
@@ -26,7 +26,7 @@ The appointment event stream is process-local Server-Sent Events (SSE). Run exac
    ```
 
 4. Put Nginx, IIS, or another TLS reverse proxy in front of that private port. Expose only a stable HTTPS address such as `https://appointments.kidokids.mn`. The proxy must not buffer `/api/events/appointments`; preserve `Connection: keep-alive` and the `X-Accel-Buffering: no` response header.
-5. Confirm `https://YOUR-HOST/api/health` responds with `{"status":"ok"}` from a different network. This confirms the reachable API and database connection.
+5. Confirm `https://YOUR-HOST/api/health` responds with `{"status":"ok"}` from a different network. This confirms the reachable API, database connection, and required auth configuration. A missing `JWT_SECRET` now makes this endpoint return 503 instead of allowing a broken login deployment to pass its health check.
 
 ## Build the Windows installer
 

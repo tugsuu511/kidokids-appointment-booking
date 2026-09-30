@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getCurrentUser } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth";
 import { subscribeToAppointmentChanges } from "@/lib/appointment-events";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const encoder = new TextEncoder();
 
 export async function GET() {
-  const user = await getCurrentUser();
+  const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
 
   let unsubscribe = () => {};

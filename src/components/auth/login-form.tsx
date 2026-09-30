@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -17,7 +16,6 @@ const loginSchema = z.object({
 });
 
 export function LoginForm() {
-  const router = useRouter();
   const [serverError, setServerError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -46,8 +44,10 @@ export function LoginForm() {
         throw new Error(data.error ?? "Нэвтрэх үед алдаа гарлаа.");
       }
 
-      router.push(data.redirectTo ?? "/dashboard");
-      router.refresh();
+      // Start one fresh document request after Set-Cookie has been committed.
+      // A push followed immediately by refresh can issue duplicate RSC requests
+      // and race against stale pre-login router state in production.
+      window.location.replace(data.redirectTo ?? "/dashboard");
     } catch (error) {
       setServerError(error instanceof Error ? error.message : "Нэвтрэх үед алдаа гарлаа.");
     } finally {
