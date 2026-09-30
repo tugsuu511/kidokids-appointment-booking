@@ -104,9 +104,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="flex items-center gap-3">
               <span className="rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">{user ? `${user.fullName} · ${user.role}` : "..."}</span>
-              <Link href="/api/auth/logout" className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                Гарах
-              </Link>
+              <form action="/api/auth/logout" method="post">
+                <button type="submit" className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                  Гарах
+                </button>
+              </form>
             </div>
           </header>
 
