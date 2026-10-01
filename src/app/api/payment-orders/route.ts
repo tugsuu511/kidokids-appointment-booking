@@ -97,6 +97,8 @@ export async function PATCH(request: Request) {
         id: result.paymentOrder.id,
         appointmentId: result.paymentOrder.appointmentId,
         status: result.paymentOrder.status,
+        appointmentDate: result.paymentOrder.appointment.appointmentDate.toISOString().slice(0, 10),
+        doctorId: result.paymentOrder.appointment.doctorId,
         amount: result.paymentOrder.amount.toString(),
         updatedAt: result.paymentOrder.updatedAt.toISOString(),
         appointmentStatus: result.paymentOrder.appointment.status,

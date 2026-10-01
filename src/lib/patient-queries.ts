@@ -61,10 +61,9 @@ export async function listPatientsForUser(user: SessionUser, query = "", request
   };
 
   const pageSize = 20;
-  const total = await prisma.patient.count({ where });
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const page = Math.min(Math.max(1, requestedPage), totalPages);
-  const patients = await prisma.patient.findMany({
+  const requested = Math.max(1, requestedPage);
+  const getPage = (page: number) => prisma.patient.findMany({
+    relationLoadStrategy: "join",
     where,
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
     skip: (page - 1) * pageSize,
@@ -79,6 +78,16 @@ export async function listPatientsForUser(user: SessionUser, query = "", request
       },
     },
   });
+
+  // Most navigations open page one. Fetch it alongside the count, but clamp
+  // later pages before issuing OFFSET (including arbitrarily large input).
+  const [total, firstPage] = await Promise.all([
+    prisma.patient.count({ where }),
+    requested === 1 ? getPage(1) : Promise.resolve(null),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requested, totalPages);
+  const patients = firstPage ?? await getPage(page);
 
   return {
     patients: patients.map(({ _count, appointments, ...patient }) => ({
@@ -98,6 +107,7 @@ export async function getPatientDetailsForUser(user: SessionUser, patientId: str
   if (!accessWhere) return undefined;
 
   const patient = await prisma.patient.findFirst({
+    relationLoadStrategy: "join",
     where: { AND: [{ id: patientId }, accessWhere] },
     select: {
       ...patientProfileSelect,

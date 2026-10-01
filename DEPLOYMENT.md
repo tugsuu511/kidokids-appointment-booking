@@ -1,5 +1,21 @@
 # Production server and Windows client
 
+## Vercel production
+
+The Vercel deployment uses `vercel.json` to run Functions in Singapore (`sin1`),
+alongside the existing Neon database in `ap-southeast-1`. Deploy from this source
+with `vercel deploy --prod`; changing the region requires a new deployment.
+Keep `DATABASE_URL` and `JWT_SECRET` in the project's production environment.
+`.vercelignore` excludes local environment files and Windows release artifacts.
+
+`npm run build` regenerates Prisma Client with the `relationJoins` feature.
+This changes relation loading, not the database schema; no migration is required.
+Run `npm test`, `npm run lint`, and `npm run build` before deployment.
+
+The process-local SSE implementation below still requires a shared pub/sub
+service for reliable delivery between separate Vercel instances. This is separate
+from the function-region and query-latency configuration.
+
 ## Architecture
 
 `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, Prisma Client, and the Next.js API run **only** on one long-lived Node.js production server. The Windows installer is an Electron browser shell; it contains no database credential and no Prisma code.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,10 +37,17 @@ export function DailyAppointments({ initialDate, initialAppointments, selectedDa
   const [revision, setRevision] = useState(0);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState("");
+  const initialRequest = useRef({ date: initialDate, refreshVersion });
+  const hasRequestedData = useRef(false);
   const currentResult = result.date === date ? result : null;
   const appointments = (currentResult?.appointments ?? []).filter((appointment) => appointment.appointmentDate.slice(0, 10) === date);
 
   useEffect(() => {
+    // SSR already supplied this snapshot. This also survives Strict Mode's
+    // effect replay; returning to the initial day after navigation still loads.
+    if (!hasRequestedData.current && date === initialRequest.current.date &&
+      refreshVersion === initialRequest.current.refreshVersion && revision === 0) return;
+    hasRequestedData.current = true;
     const controller = new AbortController();
     void fetch(`/api/appointments?date=${encodeURIComponent(date)}`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {

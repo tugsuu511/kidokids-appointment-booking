@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, before, test } from "node:test";
 import { JSDOM } from "jsdom";
+import { StrictMode } from "react";
 
 import { AppointmentsClient } from "../src/app/appointments/appointments-client";
 import { DailyAppointments } from "../src/components/appointments/daily-appointments";
+import { DashboardSummary } from "../src/components/appointments/dashboard-summary";
+import { appointmentChangedEventName } from "../src/components/appointments/appointment-realtime-listener";
+import type { DashboardSummaryData } from "../src/lib/dashboard";
 import {
   appointmentStatusOptions,
   canTransitionAppointmentStatus,
@@ -43,6 +47,7 @@ before(async () => {
     HTMLElement: dom.window.HTMLElement,
     HTMLInputElement: dom.window.HTMLInputElement,
     FormData: dom.window.FormData,
+    CustomEvent: dom.window.CustomEvent,
     IS_REACT_ACT_ENVIRONMENT: true,
   });
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
@@ -270,4 +275,109 @@ test("rapid day navigation ignores stale responses and a failed day cannot show 
   assert.equal(view.queryByText("Example"), null);
   assert.match(view.getByRole("alert").textContent ?? "", /Day lookup failed/);
   assert.equal((view.getByLabelText("Огноогоор шүүх") as HTMLInputElement).value, "2026-10-01");
+});
+
+test("SSR daily data skips the initial fetch even under Strict Mode, but events and local saves refresh it", async () => {
+  const requests = mockAvailability();
+  const renderList = (refreshVersion: number) => <StrictMode><DailyAppointments initialDate="2026-09-28" initialAppointments={[appointment]} refreshVersion={refreshVersion} /></StrictMode>;
+  const view = testing.render(renderList(0));
+  assert.equal(requests.length, 0);
+  assert.ok(view.getByText("Example"));
+
+  testing.act(() => window.dispatchEvent(new window.CustomEvent(appointmentChangedEventName, {
+    detail: { appointmentDate: "2026-09-29", action: "created" },
+  })));
+  assert.equal(requests.length, 0, "another date must not reload this list");
+  testing.act(() => window.dispatchEvent(new window.CustomEvent(appointmentChangedEventName, {
+    detail: { appointmentDate: "2026-09-28", action: "status-updated" },
+  })));
+  assert.equal(requests.length, 1);
+  await testing.act(async () => requests[0].resolve(Response.json({ appointments: [] })));
+  assert.equal(view.queryByText("Example"), null);
+  view.rerender(renderList(1));
+  assert.equal(requests.length, 2, "a successful local save must still invalidate SSR data");
+});
+
+const summary: DashboardSummaryData = {
+  date: "2026-09-28", todayCount: 1, byStatus: { BOOKED: 1 },
+  pendingCount: 0, pendingAmount: "0", orders: [],
+};
+
+function dispatchChange(action: string, appointmentDate = summary.date) {
+  window.dispatchEvent(new window.CustomEvent(appointmentChangedEventName, { detail: { action, appointmentDate } }));
+}
+
+test("dashboard uses SSR data and coalesces realtime bursts into a summary-only request", async () => {
+  const requests = mockAvailability();
+  const view = testing.render(<StrictMode><DashboardSummary initialData={summary} /></StrictMode>);
+  assert.equal(requests.length, 0);
+  testing.act(() => dispatchChange("created", "2026-10-01"));
+  await testing.act(async () => new Promise((resolve) => setTimeout(resolve, 280)));
+  assert.equal(requests.length, 0);
+
+  testing.act(() => {
+    dispatchChange("created");
+    dispatchChange("status-updated");
+    dispatchChange("payment-updated");
+  });
+  await testing.waitFor(() => assert.equal(requests.length, 1));
+  assert.equal(requests[0].url, "/api/dashboard");
+  await testing.act(async () => requests[0].resolve(Response.json({ ...summary, todayCount: 9 })));
+  assert.ok(view.getByText("9"));
+});
+
+test("dashboard aborts superseded summaries, ignores late data, and preserves the snapshot after failure", async () => {
+  const requests = mockAvailability();
+  const view = testing.render(<DashboardSummary initialData={summary} />);
+  testing.act(() => dispatchChange("status-updated"));
+  await testing.waitFor(() => assert.equal(requests.length, 1));
+  testing.act(() => dispatchChange("payment-updated"));
+  assert.equal(requests[0].signal?.aborted, true);
+  await testing.waitFor(() => assert.equal(requests.length, 2));
+  await testing.act(async () => requests[1].resolve(Response.json({ ...summary, todayCount: 7 })));
+  await testing.act(async () => requests[0].resolve(Response.json({ ...summary, todayCount: 99 })));
+  assert.ok(view.getByText("7"));
+  assert.equal(view.queryByText("99"), null);
+
+  testing.act(() => dispatchChange("payment-updated"));
+  await testing.waitFor(() => assert.equal(requests.length, 3));
+  await testing.act(async () => requests[2].reject(new Error("Offline")));
+  assert.ok(view.getByRole("alert"));
+  assert.ok(view.getByText("7"));
+  testing.fireEvent.click(view.getByRole("button", { name: "Дахин авах" }));
+  await testing.waitFor(() => assert.equal(requests.length, 4));
+  await testing.act(async () => requests[3].resolve(Response.json(summary)));
+  assert.equal(view.queryByRole("alert"), null);
+});
+
+test("a local payment refreshes both summary and appointments without waiting for SSE", async () => {
+  const requests = mockAvailability();
+  const paidAppointment = { ...appointment, status: "COMPLETED" as const };
+  const order = {
+    id: "payment-1", amount: "10000", description: null, status: "PENDING" as const,
+    updatedAt: "2026-09-28T00:00:00Z",
+    appointment: {
+      appointmentDate: "2026-09-28", status: "COMPLETED" as const,
+      patient: appointment.patient, doctor: appointment.doctor, service: appointment.service,
+    },
+  };
+  const originalConfirm = window.confirm;
+  window.confirm = () => true;
+  try {
+    const view = testing.render(<>
+      <DashboardSummary initialData={{ ...summary, pendingCount: 1, pendingAmount: "10000", orders: [order] }} />
+      <DailyAppointments initialDate={summary.date} initialAppointments={[paidAppointment]} />
+    </>);
+    assert.equal(requests.length, 0);
+    testing.fireEvent.click(view.getByRole("button", { name: "Төлөгдсөн болгох" }));
+    assert.equal(requests[0].method, "PATCH");
+    await testing.act(async () => requests[0].resolve(Response.json({ paymentOrder: {
+      appointmentId: appointment.id, appointmentDate: summary.date, doctorId: appointment.doctor.id,
+    } })));
+    await testing.waitFor(() => assert.ok(requests.some((request) => request.url === "/api/dashboard")));
+    assert.ok(requests.some((request) => request.url === `/api/appointments?date=${summary.date}`));
+    assert.equal(view.queryByRole("button", { name: "Төлөгдсөн болгох" }), null);
+  } finally {
+    window.confirm = originalConfirm;
+  }
 });

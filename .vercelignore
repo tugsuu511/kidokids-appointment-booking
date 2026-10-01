@@ -1,0 +1,7 @@
+.env*
+.neon
+.agents
+desktop
+release
+release-*
+tsconfig.tsbuildinfo

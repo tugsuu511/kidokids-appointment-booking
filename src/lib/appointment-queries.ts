@@ -7,6 +7,7 @@ export async function getDailyAppointments(value: string, doctorId?: string): Pr
   if (!date) throw new Error("Invalid appointment date");
 
   const appointments = await prisma.appointment.findMany({
+    relationLoadStrategy: "join",
     where: { appointmentDate: { gte: date, lt: nextDay(date) }, ...(doctorId ? { doctorId } : {}) },
     orderBy: [{ startTime: "asc" }, { id: "asc" }],
     select: {
@@ -53,6 +54,7 @@ export async function getDoctorDailySchedules(value: string): Promise<DoctorDail
   if (!date) throw new Error("Invalid appointment date");
 
   return prisma.doctor.findMany({
+    relationLoadStrategy: "join",
     where: { isActive: true },
     orderBy: { fullName: "asc" },
     select: {

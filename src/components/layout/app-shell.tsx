@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, LayoutDashboard, Stethoscope, UserRoundCog, UsersRound } from "lucide-react";
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { CalendarDays, LayoutDashboard, LoaderCircle, Stethoscope, UserRoundCog, UsersRound } from "lucide-react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { AppointmentRealtimeListener } from "@/components/appointments/appointment-realtime-listener";
+import Loading from "@/app/loading";
 
 const adminNavItems = [
   { href: "/dashboard", label: "Хяналтын самбар", icon: LayoutDashboard },
@@ -19,10 +20,21 @@ const doctorNavItems = [{ href: "/doctor", label: "Миний үзлэгүүд",
 
 type SessionUser = { fullName: string; role: "ADMIN" | "MANAGER" | "DOCTOR" };
 
+function NavigationLabel({ label }: { label: string }) {
+  const { pending } = useLinkStatus();
+  return <>
+    <span>{label}</span>
+    {pending ? <LoaderCircle role="status" aria-label="Хуудас нээж байна" className="ml-auto h-4 w-4 animate-spin" /> : null}
+  </>;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [leavingStaffRegistry, setLeavingStaffRegistry] = useState(false);
+  const [isNavigating, startNavigation] = useTransition();
+  const [navigationError, setNavigationError] = useState("");
   const visibleNavItems = user?.role === "DOCTOR"
     ? doctorNavItems
     : user?.role === "ADMIN"
@@ -45,14 +57,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => controller.abort();
   }, [pathname, user]);
 
-  async function navigateFromStaffRegistry(event: MouseEvent<HTMLAnchorElement>, href: string) {
+  async function navigateFromStaffRegistry(event: { preventDefault: () => void }, href: string) {
     if (!pathname.startsWith("/doctors") || href === "/doctors") return;
 
     event.preventDefault();
+    if (leavingStaffRegistry || isNavigating) return;
+    setLeavingStaffRegistry(true);
+    setNavigationError("");
     try {
-      await fetch("/api/auth/staff-access", { method: "DELETE" });
+      const response = await fetch("/api/auth/staff-access", { method: "DELETE" });
+      if (!response.ok) throw new Error("Staff access could not be cleared");
+      // Wait for Set-Cookie before navigation; show the loading state immediately.
+      startNavigation(() => router.push(href));
+    } catch {
+      setNavigationError("Хуудас шилжүүлэхэд алдаа гарлаа. Дахин оролдоно уу.");
     } finally {
-      router.push(href);
+      setLeavingStaffRegistry(false);
     }
   }
 
@@ -81,7 +101,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={href}
                 href={href}
-                onClick={(event) => void navigateFromStaffRegistry(event, href)}
+                onNavigate={(event) => void navigateFromStaffRegistry(event, href)}
                 aria-current={pathname.startsWith(href) ? "page" : undefined}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
                   pathname.startsWith(href)
@@ -90,7 +110,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 }`}
               >
                 <Icon className="h-4 w-4" />
-                {label}
+                <NavigationLabel label={label} />
               </Link>
             ))}
           </nav>
@@ -112,7 +132,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </header>
 
-          <main className="p-6">{children}</main>
+          <main className="p-6" aria-busy={leavingStaffRegistry || isNavigating}>
+            {navigationError ? <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{navigationError}</p> : null}
+            {leavingStaffRegistry || isNavigating ? <Loading /> : children}
+          </main>
         </div>
       </div>
     </div>

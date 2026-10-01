@@ -1,34 +1,18 @@
 "use client";
 
 import { Check, LoaderCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { appointmentChangedEventName } from "@/components/appointments/appointment-realtime-listener";
+import { appointmentChangedEventName, type AppointmentChangeEvent } from "@/components/appointments/appointment-realtime-listener";
 import { Button } from "@/components/ui/button";
-import { formatAppointmentDate, statusLabels, statusStyles, type AppointmentStatusValue } from "@/lib/appointments";
-
-export type PaymentOrderItem = {
-  id: string;
-  amount: string;
-  description: string | null;
-  status: "PENDING" | "PAID" | "CANCELLED";
-  updatedAt: string;
-  appointment: {
-    appointmentDate: string;
-    status: AppointmentStatusValue;
-    patient: { firstName: string; lastName: string; phone: string };
-    doctor: { fullName: string };
-    service: { name: string };
-  };
-};
+import { formatAppointmentDate, statusLabels, statusStyles } from "@/lib/appointments";
+import type { PaymentOrderItem } from "@/lib/dashboard";
 
 function money(value: string) {
   return new Intl.NumberFormat("mn-MN", { maximumFractionDigits: 0 }).format(Number(value));
 }
 
 export function PaymentOrdersPanel({ initialOrders, initialPendingCount }: { initialOrders: PaymentOrderItem[]; initialPendingCount: number }) {
-  const router = useRouter();
   const [paidIds, setPaidIds] = useState<Set<string>>(() => new Set());
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -38,12 +22,6 @@ export function PaymentOrdersPanel({ initialOrders, initialPendingCount }: { ini
     : order);
   const optimisticPaidCount = initialOrders.filter((order) => order.status === "PENDING" && paidIds.has(order.id)).length;
   const pendingCount = Math.max(0, initialPendingCount - optimisticPaidCount);
-
-  useEffect(() => {
-    const refresh = () => router.refresh();
-    window.addEventListener(appointmentChangedEventName, refresh);
-    return () => window.removeEventListener(appointmentChangedEventName, refresh);
-  }, [router]);
 
   async function markPaid(order: PaymentOrderItem) {
     const patientName = `${order.appointment.patient.lastName} ${order.appointment.patient.firstName}`.trim();
@@ -64,7 +42,15 @@ export function PaymentOrdersPanel({ initialOrders, initialPendingCount }: { ini
 
       setPaidIds((current) => new Set(current).add(order.id));
       setSuccess("Төлбөрийг төлөгдсөн төлөвт шилжүүллээ.");
-      router.refresh();
+      // Update this browser even if the SSE stream lives on another instance.
+      window.dispatchEvent(new CustomEvent<AppointmentChangeEvent>(appointmentChangedEventName, {
+        detail: {
+          appointmentId: data.paymentOrder.appointmentId,
+          appointmentDate: data.paymentOrder.appointmentDate,
+          doctorId: data.paymentOrder.doctorId,
+          action: "payment-updated",
+        },
+      }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Төлбөрийн төлөв шинэчлэх үед алдаа гарлаа.");
     } finally {
