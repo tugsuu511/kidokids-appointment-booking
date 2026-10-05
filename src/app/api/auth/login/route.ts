@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { createSessionToken } from "@/lib/auth";
+import { roleHomePath } from "@/lib/permissions";
 
 const loginSchema = z.object({
   username: z.string().trim().min(3),
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
         passwordHash: true,
         role: true,
         isActive: true,
+        sessionVersion: true,
       },
     });
 
@@ -46,9 +48,11 @@ export async function POST(request: Request) {
       username: user.username,
       fullName: user.fullName,
       role: user.role,
+      sessionVersion: user.sessionVersion,
     });
 
-    const response = NextResponse.json({ success: true, redirectTo: user.role === "DOCTOR" ? "/doctor" : "/dashboard" }, { status: 200 });
+    const response = NextResponse.json({ success: true, redirectTo: roleHomePath(user.role) }, { status: 200 });
+    response.cookies.delete("staff-access");
     response.cookies.set("session", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

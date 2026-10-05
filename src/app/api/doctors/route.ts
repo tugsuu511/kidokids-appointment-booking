@@ -1,87 +1,56 @@
-import { Prisma } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-
-import { getCurrentUser, hasStaffAccess } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireStaffRegistryAccess, staffApiError } from "@/lib/staff-api";
+import { createStaff, createStaffSchema, deleteStaff, StaffRegistryError, updateStaff, updateStaffSchema } from "@/lib/staff-registry";
 
-const doctorFields = z.object({ fullName: z.string().trim().min(2).max(100), phone: z.string().trim().min(3).max(30), room: z.string().trim().max(30).nullable().optional() });
-const usernameSchema = z.string().trim().min(3).max(50).regex(/^[a-zA-Z0-9._-]+$/, "Нэвтрэх нэр зөвхөн латин үсэг, тоо болон . _ - тэмдэгт агуулна.");
-const passwordSchema = z.string().min(8).max(128).regex(/[A-Za-z]/, "Нууц үг үсэг агуулсан байна.").regex(/[0-9]/, "Нууц үг тоо агуулсан байна.");
-const createDoctorSchema = doctorFields.extend({ username: usernameSchema, temporaryPassword: passwordSchema });
-const updateDoctorSchema = z.object({
-  id: z.string().min(1), fullName: doctorFields.shape.fullName.optional(), phone: doctorFields.shape.phone.optional(), room: doctorFields.shape.room,
-  username: usernameSchema.optional(), temporaryPassword: passwordSchema.optional(), isActive: z.boolean().optional(),
-}).refine((value) => value.fullName !== undefined || value.phone !== undefined || value.room !== undefined || value.username !== undefined || value.temporaryPassword !== undefined || value.isActive !== undefined, { message: "Шинэчлэх мэдээлэл байхгүй байна." });
-
+// Older clients use this endpoint. Keep the same self-protection, session
+// revocation, transactions and audit logging as the staff registry.
 const doctorSelect = { id: true, fullName: true, phone: true, room: true, isActive: true, userId: true, user: { select: { id: true, fullName: true, username: true } } } as const;
+const legacyId = z.object({ id: z.string().min(1) });
 
-async function requireStaffRegistryAccess() {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "ADMIN" || !(await hasStaffAccess(user.id))) return null;
-  return user;
+async function targetForDoctor(id: string) {
+  const doctor = await prisma.doctor.findUnique({ where: { id }, select: { id: true, userId: true } });
+  if (!doctor) throw new StaffRegistryError("Эмчийн бүртгэл олдсонгүй.", 404);
+  return doctor.userId ? { userId: doctor.userId } : { doctorId: doctor.id };
 }
 
 export async function POST(request: Request) {
-  if (!(await requireStaffRegistryAccess())) return NextResponse.json({ error: "Ажилтны бүртгэлийн нууц үгээр нэвтэрнэ үү." }, { status: 403 });
   try {
-    const parsed = createDoctorSchema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Эмчийн мэдээлэл буруу байна." }, { status: 400 });
-    const { username, temporaryPassword, ...doctorData } = parsed.data;
-    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
-    const doctor = await prisma.$transaction(async (tx) => {
-      const account = await tx.user.create({ data: { username, passwordHash, fullName: doctorData.fullName, role: "DOCTOR", isActive: true } });
-      return tx.doctor.create({ data: { ...doctorData, room: doctorData.room || null, userId: account.id }, select: doctorSelect });
-    });
+    const actor = await requireStaffRegistryAccess();
+    const body = await request.json();
+    const parsed = createStaffSchema.safeParse({ ...body, typeId: "DOCTOR" });
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
+    const member = await createStaff(actor, parsed.data);
+    const doctor = await prisma.doctor.findUniqueOrThrow({ where: { id: member.doctorId! }, select: doctorSelect });
     return NextResponse.json({ doctor }, { status: 201 });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return NextResponse.json({ error: "Энэ нэвтрэх нэр аль хэдийн бүртгэлтэй байна." }, { status: 409 });
-    console.error("Create doctor failed:", error);
-    return NextResponse.json({ error: "Эмч нэмэх үед алдаа гарлаа." }, { status: 500 });
-  }
+  } catch (error) { return staffApiError(error); }
 }
 
 export async function PATCH(request: Request) {
-  if (!(await requireStaffRegistryAccess())) return NextResponse.json({ error: "Ажилтны бүртгэлийн нууц үгээр нэвтэрнэ үү." }, { status: 403 });
   try {
-    const parsed = updateDoctorSchema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Эмчийн мэдээлэл буруу байна." }, { status: 400 });
-    const { id, username, temporaryPassword, ...data } = parsed.data;
-    const existing = await prisma.doctor.findUnique({ where: { id }, select: { userId: true, fullName: true, isActive: true } });
-    if (!existing) return NextResponse.json({ error: "Эмчийн бүртгэл олдсонгүй." }, { status: 404 });
-    if (!existing.userId && ((username && !temporaryPassword) || (!username && temporaryPassword))) return NextResponse.json({ error: "Нэвтрэх эрх үүсгэхийн тулд нэвтрэх нэр, түр нууц үгийг хоёуланг нь оруулна уу." }, { status: 400 });
-    const passwordHash = temporaryPassword ? await bcrypt.hash(temporaryPassword, 10) : undefined;
-    const doctor = await prisma.$transaction(async (tx) => {
-      let resolvedUserId = existing.userId;
-      if (!resolvedUserId && username && passwordHash) {
-        const account = await tx.user.create({ data: { username, passwordHash, fullName: data.fullName ?? existing.fullName, role: "DOCTOR", isActive: data.isActive ?? existing.isActive } });
-        resolvedUserId = account.id;
-      } else if (resolvedUserId) {
-        await tx.user.update({ where: { id: resolvedUserId }, data: { ...(username !== undefined ? { username } : {}), ...(passwordHash ? { passwordHash } : {}), ...(data.fullName !== undefined ? { fullName: data.fullName } : {}), ...(data.isActive !== undefined ? { isActive: data.isActive } : {}) } });
-      }
-      return tx.doctor.update({ where: { id }, data: { ...data, ...(data.room !== undefined ? { room: data.room || null } : {}), ...(resolvedUserId && !existing.userId ? { userId: resolvedUserId } : {}) }, select: doctorSelect });
+    const actor = await requireStaffRegistryAccess();
+    const body = await request.json();
+    const id = legacyId.safeParse(body);
+    if (!id.success) return NextResponse.json({ error: "Эмч сонгоно уу." }, { status: 400 });
+    const target = await targetForDoctor(id.data.id);
+    const parsed = updateStaffSchema.safeParse({
+      ...target, fullName: body.fullName, phone: body.phone, room: body.room,
+      username: body.username, temporaryPassword: body.temporaryPassword, isActive: body.isActive,
     });
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
+    await updateStaff(actor, parsed.data);
+    const doctor = await prisma.doctor.findUniqueOrThrow({ where: { id: id.data.id }, select: doctorSelect });
     return NextResponse.json({ doctor });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return NextResponse.json({ error: "Энэ нэвтрэх нэр аль хэдийн бүртгэлтэй байна." }, { status: 409 });
-    console.error("Update doctor failed:", error);
-    return NextResponse.json({ error: "Эмчийн мэдээлэл шинэчлэх үед алдаа гарлаа." }, { status: 500 });
-  }
+  } catch (error) { return staffApiError(error); }
 }
 
 export async function DELETE(request: Request) {
-  if (!(await requireStaffRegistryAccess())) return NextResponse.json({ error: "Ажилтны бүртгэлийн нууц үгээр нэвтэрнэ үү." }, { status: 403 });
   try {
-    const body = z.object({ id: z.string().min(1) }).safeParse(await request.json());
-    if (!body.success) return NextResponse.json({ error: "Эмч сонгоно уу." }, { status: 400 });
-    const appointmentCount = await prisma.appointment.count({ where: { doctorId: body.data.id } });
-    if (appointmentCount > 0) return NextResponse.json({ error: "Захиалгын түүхтэй эмчийг устгах боломжгүй. Идэвхгүй болгоно уу." }, { status: 409 });
-    const doctor = await prisma.doctor.findUnique({ where: { id: body.data.id }, select: { userId: true } });
-    await prisma.$transaction(async (tx) => { await tx.doctorSchedule.deleteMany({ where: { doctorId: body.data.id } }); await tx.doctor.delete({ where: { id: body.data.id } }); if (doctor?.userId) await tx.user.update({ where: { id: doctor.userId }, data: { isActive: false } }); });
+    const actor = await requireStaffRegistryAccess();
+    const parsed = legacyId.safeParse(await request.json());
+    if (!parsed.success) return NextResponse.json({ error: "Эмч сонгоно уу." }, { status: 400 });
+    await deleteStaff(actor, await targetForDoctor(parsed.data.id));
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Delete doctor failed:", error);
-    return NextResponse.json({ error: "Эмч устгах үед алдаа гарлаа." }, { status: 500 });
-  }
+  } catch (error) { return staffApiError(error); }
 }

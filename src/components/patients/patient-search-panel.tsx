@@ -40,7 +40,6 @@ export function PatientSearchPanel() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 id="patient-search-heading" className="flex items-center gap-2 font-semibold text-slate-900"><Search className="h-4 w-4 text-cyan-700" />Үйлчлүүлэгч хайх</h2>
-          <p className="mt-1 text-sm text-slate-500">Өөрийн үзсэн үйлчлүүлэгчийг РД, нэр эсвэл утсаар хайна.</p>
         </div>
         <form onSubmit={searchPatients} className="flex w-full gap-2 lg:max-w-md">
           <Input name="query" aria-label="Үйлчлүүлэгчийн мэдээлэл" placeholder="РД / нэр / утас" autoComplete="off" required />

@@ -7,9 +7,11 @@ import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtim
 import type { NextRouter } from "next/router";
 
 import { AppShell } from "../src/components/layout/app-shell";
+import type { Role } from "../src/types/auth";
 
 let testing: typeof import("@testing-library/react");
 const originalFetch = globalThis.fetch;
+let eventStreamCount = 0;
 
 before(async () => {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost:3000/doctors" });
@@ -17,7 +19,7 @@ before(async () => {
     window: dom.window, document: dom.window.document, self: dom.window,
     HTMLElement: dom.window.HTMLElement, HTMLAnchorElement: dom.window.HTMLAnchorElement,
     IS_REACT_ACT_ENVIRONMENT: true,
-    EventSource: class { addEventListener() {} removeEventListener() {} close() {} },
+    EventSource: class { constructor() { eventStreamCount++; } addEventListener() {} removeEventListener() {} close() {} },
   });
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
   testing = await import("@testing-library/react");
@@ -26,14 +28,15 @@ before(async () => {
 afterEach(() => {
   testing.cleanup();
   globalThis.fetch = originalFetch;
+  eventStreamCount = 0;
 });
 
-function mount() {
+function mount(role: Role = "ADMIN", pathname = "/doctors") {
   const navigations: string[] = [];
   const requests: { resolve: (response: Response) => void; url: string; method?: string }[] = [];
   globalThis.fetch = (url, init) => {
     if (String(url) === "/api/auth/session") return Promise.resolve(Response.json({
-      user: { role: "ADMIN", fullName: "Test admin" },
+      user: { role, fullName: "Test user" },
     }));
     return new Promise<Response>((resolve) => requests.push({ resolve, url: String(url), method: init?.method }));
   };
@@ -52,7 +55,7 @@ function mount() {
     isFallback: false, isReady: true, isPreview: false, isLocaleDomain: false,
   };
   const view = testing.render(<AppRouterContext.Provider value={router}>
-    <RouterContext.Provider value={linkRouter}><PathnameContext.Provider value="/doctors">
+    <RouterContext.Provider value={linkRouter}><PathnameContext.Provider value={pathname}>
       <AppShell><p>Staff registry content</p></AppShell>
     </PathnameContext.Provider></RouterContext.Provider>
   </AppRouterContext.Provider>);
@@ -83,4 +86,16 @@ test("failed staff access revocation keeps the user on the page and permits retr
   testing.fireEvent.click(view.getByRole("link", { name: "Цаг захиалга" }));
   await testing.act(async () => requests[1].resolve(Response.json({ success: true })));
   assert.deepEqual(navigations, ["/appointments"]);
+});
+
+test("nurses have only their landing page and never open the appointment event stream", async () => {
+  const { view } = mount("NURSE", "/nurse");
+  assert.equal(view.queryByRole("link", { name: "Хяналтын самбар" }), null);
+  await testing.act(async () => {});
+  assert.equal(view.getAllByRole("link").length, 1);
+  assert.ok(view.getByRole("link", { name: "Сувилагчийн хэсэг" }));
+  assert.equal(view.queryByRole("link", { name: "Цаг захиалга" }), null);
+  assert.equal(view.queryByRole("link", { name: "Ажилтны бүртгэл" }), null);
+  assert.equal(view.queryByRole("link", { name: "Үйлчлүүлэгчид" }), null);
+  assert.equal(eventStreamCount, 0);
 });

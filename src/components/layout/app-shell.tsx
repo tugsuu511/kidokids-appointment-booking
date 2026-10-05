@@ -3,10 +3,13 @@
 import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, LayoutDashboard, LoaderCircle, Stethoscope, UserRoundCog, UsersRound } from "lucide-react";
+import { CalendarDays, LayoutDashboard, LoaderCircle, Stethoscope, UserRoundCog, UsersRound, UserRound } from "lucide-react";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { AppointmentRealtimeListener } from "@/components/appointments/appointment-realtime-listener";
 import Loading from "@/app/loading";
+import { roleLabels } from "@/types/staff";
+import type { SessionUser } from "@/types/auth";
+import { canAccessAppointmentData } from "@/lib/permissions";
 
 const adminNavItems = [
   { href: "/dashboard", label: "Хяналтын самбар", icon: LayoutDashboard },
@@ -18,7 +21,7 @@ const adminNavItems = [
 const managerNavItems = adminNavItems.slice(0, 2);
 const doctorNavItems = [{ href: "/doctor", label: "Миний үзлэгүүд", icon: Stethoscope }];
 
-type SessionUser = { fullName: string; role: "ADMIN" | "MANAGER" | "DOCTOR" };
+const nurseNavItems = [{ href: "/nurse", label: "Сувилагчийн хэсэг", icon: UserRound }];
 
 function NavigationLabel({ label }: { label: string }) {
   const { pending } = useLinkStatus();
@@ -31,7 +34,7 @@ function NavigationLabel({ label }: { label: string }) {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<SessionUser | null>(null);
+  const [user, setUser] = useState<Pick<SessionUser, "fullName" | "role" | "staffTypeName"> | null>(null);
   const [leavingStaffRegistry, setLeavingStaffRegistry] = useState(false);
   const [isNavigating, startNavigation] = useTransition();
   const [navigationError, setNavigationError] = useState("");
@@ -39,10 +42,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     ? doctorNavItems
     : user?.role === "ADMIN"
       ? adminNavItems
-      : managerNavItems;
+      : user?.role === "MANAGER"
+        ? managerNavItems
+        : user?.role === "NURSE" ? nurseNavItems : [];
 
   useEffect(() => {
-    if (pathname === "/login" || user) return;
+    if (pathname === "/login") return;
 
     const controller = new AbortController();
     void fetch("/api/auth/session", { cache: "no-store", signal: controller.signal })
@@ -55,7 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       });
 
     return () => controller.abort();
-  }, [pathname, user]);
+  }, [pathname]);
 
   async function navigateFromStaffRegistry(event: { preventDefault: () => void }, href: string) {
     if (!pathname.startsWith("/doctors") || href === "/doctors") return;
@@ -82,7 +87,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <AppointmentRealtimeListener />
+      {user && canAccessAppointmentData(user.role) ? <AppointmentRealtimeListener /> : null}
       <div className="flex min-h-screen">
         <aside className="w-72 shrink-0 border-r border-sky-100 bg-sky-50 p-5 text-sky-950">
           <div className="mb-8">
@@ -120,10 +125,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex-1">
           <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
             <div>
-              <p className="text-sm text-slate-500">{user?.role === "MANAGER" ? "Manager хэсэг" : "Эмнэлгийн удирдлага"}</p>
+              <p className="text-sm text-slate-500">{user?.role === "NURSE" ? "Сувилагчийн хэсэг" : user?.role === "MANAGER" ? "Менежерийн хэсэг" : "Эмнэлгийн удирдлага"}</p>
             </div>
             <div className="flex items-center gap-3">
-              <span className="rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">{user ? `${user.fullName} · ${user.role}` : "..."}</span>
+              <span className="rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">{user ? `${user.fullName} · ${user.staffTypeName ?? roleLabels[user.role]}` : "..."}</span>
               <form action="/api/auth/logout" method="post">
                 <button type="submit" className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
                   Гарах

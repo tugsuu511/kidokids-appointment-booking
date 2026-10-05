@@ -9,8 +9,32 @@ Keep `DATABASE_URL` and `JWT_SECRET` in the project's production environment.
 `.vercelignore` excludes local environment files and Windows release artifacts.
 
 `npm run build` regenerates Prisma Client with the `relationJoins` feature.
-This changes relation loading, not the database schema; no migration is required.
+Before deploying this version, apply the pending migrations with
+`npx prisma migrate deploy` using the server's direct database connection.
+It adds staff types, optional staff phone numbers and a session version for
+revoking old logins. Existing users retain their current roles and logins.
+Test the migration on an isolated database branch before production deployment.
 Run `npm test`, `npm run lint`, and `npm run build` before deployment.
+
+The staff registry at `/doctors` now manages all users. Custom staff types use
+one of the Admin, Manager, Doctor or Nurse permission profiles. Type profiles
+are fixed after creation; reassign a user to change their access. An admin cannot
+edit, disable or delete their own account. Users with clinical or audit history
+must have access disabled instead of being deleted. Role, username, password and
+access changes revoke old sessions; users must sign in again.
+
+Nurse is a separate login-only role. Nurses land on `/nurse` and cannot access
+appointments, patients, payments, staff administration or the appointment event
+stream. The nurse migrations commit the enum addition separately, then convert
+the existing `Сувилагч` type and its assigned users to `NURSE`, revoking their old
+sessions. Clinical history is preserved. No new nurse account is seeded.
+
+For the staff API integration check, start a local server against an isolated
+branch with the migration applied and a test `JWT_SECRET`. Set
+`STAFF_TEST_DATABASE_URL` to that same branch, `STAFF_TEST_DATABASE_HOST` to its
+hostname, and optionally `STAFF_TEST_BASE_URL` (default `http://localhost:3100`).
+Run `npx tsx tests/staff-api.integration.mts`. The check creates temporary staff,
+exercises authorization and session revocation, and removes its fixtures.
 
 The process-local SSE implementation below still requires a shared pub/sub
 service for reliable delivery between separate Vercel instances. This is separate

@@ -1,8 +1,8 @@
 import { StaffAccessForm } from "@/components/auth/staff-access-form";
 import { StaffPasswordForm } from "@/components/auth/staff-password-form";
-import { DoctorsClient } from "@/components/doctors/doctors-client";
+import { StaffClient } from "@/components/staff/staff-client";
 import { hasStaffAccess, requireRole } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getStaffRegistry } from "@/lib/staff-registry";
 import { hasStaffAccessPassword } from "@/lib/staff-access";
 
 export default async function DoctorsPage() {
@@ -22,30 +22,13 @@ export default async function DoctorsPage() {
     );
   }
 
-  const doctors = await prisma.doctor.findMany({
-    orderBy: { fullName: "asc" },
-    select: {
-      id: true,
-      fullName: true,
-      phone: true,
-      room: true,
-      isActive: true,
-      userId: true,
-      user: {
-        select: {
-          id: true,
-          fullName: true,
-          username: true,
-        },
-      },
-    },
-  });
+  const { members, types } = await getStaffRegistry();
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-2xl font-bold text-slate-900">Ажилтны бүртгэл</h1>
-      <p className="mt-2 text-slate-600">Эмчийн бүртгэл болон тусдаа нэвтрэх эрхийг хамтад нь үүсгэж, засах боломжтой.</p>
-      <DoctorsClient initialDoctors={doctors} />
+      <p className="mt-2 text-slate-600">Өөрөөс бусад бүх ажилтны бүртгэл, төрөл, нэвтрэх нэр, нууц үг болон эрхийг удирдана.</p>
+      <StaffClient initialMembers={members} initialTypes={types} currentUserId={user.id} />
       <StaffPasswordForm />
     </div>
   );

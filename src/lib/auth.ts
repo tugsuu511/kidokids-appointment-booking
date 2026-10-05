@@ -5,7 +5,8 @@ import { cache } from "react";
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import type { Role, SessionUser } from "@/types/auth";
+import { roleValues, type Role, type SessionUser } from "@/types/auth";
+import { roleHomePath } from "@/lib/permissions";
 
 function getEncodedSecret() {
   const secret = process.env.JWT_SECRET;
@@ -26,6 +27,7 @@ export async function createSessionToken(user: SessionUser) {
     username: user.username,
     fullName: user.fullName,
     role: user.role,
+    sessionVersion: user.sessionVersion ?? 0,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -61,17 +63,17 @@ export async function verifySessionToken(token: string) {
     username: payload.username,
     fullName: payload.fullName,
     role: payload.role,
+    sessionVersion: typeof payload.sessionVersion === "number" ? payload.sessionVersion : 0,
   } satisfies SessionUser;
 }
 
 function isRole(value: unknown): value is Role {
-  return value === "ADMIN" || value === "MANAGER" || value === "DOCTOR";
+  return roleValues.some((role) => role === value);
 }
 
 /**
- * Fast, stateless authentication for page navigation and display-only session
- * data. The signed token already contains the fields needed for these checks,
- * so this must not wait on the remote database.
+ * Decode the signed identity. Protected pages and APIs must use getCurrentUser
+ * so revoked sessions and changed permissions are checked against the database.
  */
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const cookieStore = await cookies();
@@ -93,7 +95,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
  * Database failures intentionally propagate as server errors instead of being
  * misreported as an expired session.
  */
-export async function getCurrentUser(): Promise<SessionUser | null> {
+export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const sessionUser = await getSessionUser();
   if (!sessionUser) return null;
 
@@ -105,21 +107,25 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
       fullName: true,
       role: true,
       isActive: true,
+      sessionVersion: true,
+      staffType: { select: { name: true } },
     },
   });
 
-  if (!user || !user.isActive) return null;
+  if (!user || !user.isActive || user.sessionVersion !== (sessionUser.sessionVersion ?? 0)) return null;
 
   return {
     id: user.id,
     username: user.username,
     fullName: user.fullName,
     role: user.role,
+    sessionVersion: user.sessionVersion,
+    staffTypeName: user.staffType?.name ?? null,
   };
-}
+});
 
 export async function requireAuth() {
-  const user = await getSessionUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
@@ -132,7 +138,7 @@ export async function requireRole(...allowedRoles: Role[]) {
   const user = await requireAuth();
 
   if (!allowedRoles.includes(user.role)) {
-    redirect("/dashboard");
+    redirect(roleHomePath(user.role));
   }
 
   return user;

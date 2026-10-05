@@ -1,5 +1,4 @@
-import { requireAuth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireRole } from "@/lib/auth";
 import { getDailyAppointments } from "@/lib/appointment-queries";
 import { todayValue } from "@/lib/appointments";
 import { prisma } from "@/lib/prisma";
@@ -7,8 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { AppointmentsClient } from "./appointments-client";
 
 export default async function AppointmentsPage() {
-  const user = await requireAuth();
-  if (user.role === "DOCTOR") redirect("/doctor");
+  await requireRole("ADMIN", "MANAGER");
   const initialDate = todayValue();
 
   const [appointments, doctors, services] = await Promise.all([

@@ -3,6 +3,7 @@ import { AppointmentStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth";
+import { canAccessAppointmentData } from "@/lib/permissions";
 import { getDoctorForUser } from "@/lib/doctor-access";
 import { publishAppointmentChange } from "@/lib/appointment-events";
 import { getDailyAppointments, getDoctorDailySchedules } from "@/lib/appointment-queries";
@@ -44,6 +45,7 @@ class AppointmentTransitionError extends Error {}
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Нэвтрэх шаардлагатай." }, { status: 401 });
+  if (!canAccessAppointmentData(user.role)) return NextResponse.json({ error: "Цагийн мэдээлэлд хандах эрхгүй байна." }, { status: 403 });
 
   const currentDoctor = await getDoctorForUser(user);
   if (user.role === "DOCTOR" && !currentDoctor) return NextResponse.json({ error: "Таны хэрэглэгч эмчийн бүртгэлтэй холбогдоогүй байна." }, { status: 403 });
@@ -92,6 +94,7 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Нэвтрэх шаардлагатай." }, { status: 401 });
   if (user.role === "DOCTOR") return NextResponse.json({ error: "Эмч зөвхөн өөрийн үзлэгээс давтан цаг үүсгэнэ үү." }, { status: 403 });
+  if (user.role !== "ADMIN" && user.role !== "MANAGER") return NextResponse.json({ error: "Цаг захиалах эрхгүй байна." }, { status: 403 });
 
   try {
     const parsed = appointmentSchema.safeParse(await request.json());
@@ -199,6 +202,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Нэвтрэх шаардлагатай." }, { status: 401 });
+  if (!canAccessAppointmentData(user.role)) return NextResponse.json({ error: "Цагийн төлөв өөрчлөх эрхгүй байна." }, { status: 403 });
 
   try {
     const body = await request.json();
