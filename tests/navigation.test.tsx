@@ -88,11 +88,12 @@ test("failed staff access revocation keeps the user on the page and permits retr
   assert.deepEqual(navigations, ["/appointments"]);
 });
 
-test("nurses have only their landing page and never open the appointment event stream", async () => {
+test("nurses can access their landing page and own attendance without the appointment event stream", async () => {
   const { view } = mount("NURSE", "/nurse");
   assert.equal(view.queryByRole("link", { name: "Хяналтын самбар" }), null);
   await testing.act(async () => {});
-  assert.equal(view.getAllByRole("link").length, 1);
+  assert.equal(view.getAllByRole("link").length, 2);
+  assert.ok(view.getByRole("link", { name: "Миний цагийн тайлан" }));
   assert.ok(view.getByRole("link", { name: "Сувилагчийн хэсэг" }));
   assert.equal(view.queryByRole("link", { name: "Цаг захиалга" }), null);
   assert.equal(view.queryByRole("link", { name: "Ажилтны бүртгэл" }), null);

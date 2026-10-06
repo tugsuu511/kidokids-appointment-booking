@@ -28,6 +28,7 @@ export async function createSessionToken(user: SessionUser) {
     fullName: user.fullName,
     role: user.role,
     sessionVersion: user.sessionVersion ?? 0,
+    attendanceId: user.attendanceId,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -64,6 +65,7 @@ export async function verifySessionToken(token: string) {
     fullName: payload.fullName,
     role: payload.role,
     sessionVersion: typeof payload.sessionVersion === "number" ? payload.sessionVersion : 0,
+    attendanceId: typeof payload.attendanceId === "string" ? payload.attendanceId : undefined,
   } satisfies SessionUser;
 }
 
@@ -121,6 +123,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
     role: user.role,
     sessionVersion: user.sessionVersion,
     staffTypeName: user.staffType?.name ?? null,
+    attendanceId: sessionUser.attendanceId,
   };
 });
 

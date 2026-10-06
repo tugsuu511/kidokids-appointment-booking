@@ -3,7 +3,7 @@
 import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, LayoutDashboard, LoaderCircle, Stethoscope, UserRoundCog, UsersRound, UserRound } from "lucide-react";
+import { CalendarDays, Clock3, LayoutDashboard, LoaderCircle, Stethoscope, UserRoundCog, UsersRound, UserRound } from "lucide-react";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { AppointmentRealtimeListener } from "@/components/appointments/appointment-realtime-listener";
 import Loading from "@/app/loading";
@@ -45,6 +45,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       : user?.role === "MANAGER"
         ? managerNavItems
         : user?.role === "NURSE" ? nurseNavItems : [];
+  const navItems = user ? [...visibleNavItems, {
+    href: "/attendance", label: user.role === "ADMIN" ? "Ажилчдын цагийн тайлан" : "Миний цагийн тайлан", icon: Clock3,
+  }] : [];
 
   useEffect(() => {
     if (pathname === "/login") return;
@@ -102,7 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="space-y-2">
-            {visibleNavItems.map(({ href, label, icon: Icon }) => (
+            {navItems.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
@@ -122,7 +125,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         </aside>
 
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
             <div>
               <p className="text-sm text-slate-500">{user?.role === "NURSE" ? "Сувилагчийн хэсэг" : user?.role === "MANAGER" ? "Менежерийн хэсэг" : "Эмнэлгийн удирдлага"}</p>

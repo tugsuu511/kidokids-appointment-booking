@@ -8,4 +8,5 @@ export type SessionUser = {
   role: Role;
   sessionVersion?: number;
   staffTypeName?: string | null;
+  attendanceId?: string;
 };

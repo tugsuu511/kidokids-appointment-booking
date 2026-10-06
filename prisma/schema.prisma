@@ -54,8 +54,22 @@ model User {
 
   auditLogs AuditLog[]
   doctor    Doctor?
+  attendance Attendance[]
 
   @@index([staffTypeId])
+}
+
+model Attendance {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  checkIn        DateTime @default(now())
+  checkOut       DateTime?
+  missedCheckOut Boolean  @default(false)
+
+  // The migration also enforces one open record per user with a partial index.
+  @@index([userId, checkIn])
+  @@index([checkIn])
 }
 
 model StaffType {

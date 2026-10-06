@@ -12,6 +12,7 @@ async function main() {
   await prisma.patient.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.setting.deleteMany();
+  await prisma.attendance.deleteMany();
   await prisma.user.deleteMany();
 
   const adminPassword = await bcrypt.hash("Admin123!", 10);

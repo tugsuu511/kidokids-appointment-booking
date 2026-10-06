@@ -3,8 +3,9 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { createSessionToken } from "@/lib/auth";
+import { assertAuthConfiguration, createSessionToken } from "@/lib/auth";
 import { roleHomePath } from "@/lib/permissions";
+import { startAttendance } from "@/lib/attendance-queries";
 
 const loginSchema = z.object({
   username: z.string().trim().min(3),
@@ -43,12 +44,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Нууц үг буруу байна." }, { status: 401 });
     }
 
+    assertAuthConfiguration();
+    const attendance = await startAttendance(user);
     const token = await createSessionToken({
       id: user.id,
       username: user.username,
       fullName: user.fullName,
       role: user.role,
       sessionVersion: user.sessionVersion,
+      attendanceId: attendance.id,
     });
 
     const response = NextResponse.json({ success: true, redirectTo: roleHomePath(user.role) }, { status: 200 });

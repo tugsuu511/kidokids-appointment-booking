@@ -147,6 +147,7 @@ export async function deleteStaff(actor: SessionUser, target: z.infer<typeof sta
     const { user, doctor } = await findTarget(tx, actor, target);
     if (doctor && await tx.appointment.count({ where: { doctorId: doctor.id } })) throw new StaffRegistryError("Захиалгын түүхтэй ажилтныг устгах боломжгүй. Нэвтрэх эрхийг хаана уу.", 409);
     if (user && await tx.auditLog.count({ where: { userId: user.id } })) throw new StaffRegistryError("Үйлдлийн түүхтэй ажилтныг устгах боломжгүй. Нэвтрэх эрхийг хаана уу.", 409);
+    if (user && await tx.attendance.count({ where: { userId: user.id } })) throw new StaffRegistryError("Цагийн бүртгэлтэй ажилтныг устгах боломжгүй. Нэвтрэх эрхийг хаана уу.", 409);
     if (doctor) {
       await tx.doctorSchedule.deleteMany({ where: { doctorId: doctor.id } });
       await tx.doctor.delete({ where: { id: doctor.id } });

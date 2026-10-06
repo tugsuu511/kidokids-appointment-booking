@@ -20,6 +20,9 @@ const userIds: string[] = [];
 const doctorIds: string[] = [];
 const typeIds: string[] = [];
 let appointmentId: string | undefined;
+let patientId: string | undefined;
+let serviceId: string | undefined;
+let departmentId: string | undefined;
 
 async function call(path: string, method = "GET", body?: object, cookie = "") {
   const response = await fetch(`${base}${path}`, {
@@ -75,7 +78,7 @@ try {
   assert.equal(nurseSession.data.user.role, "NURSE");
   const nursePage = await call("/nurse", "GET", undefined, nurseCookie);
   assert.equal(nursePage.status, 200);
-  assert.ok(nursePage.html.includes("Одоогоор мэдээлэлд хандах эрх нээгээгүй байна."));
+  assert.ok(nursePage.html.includes("Миний цагийн тайлан"));
   for (const path of ["/api/dashboard?date=2026-10-05", "/api/appointments?date=2026-10-05", "/api/appointments?date=2026-10-05&doctorId=anything", "/api/patients", "/api/patients/anything", "/api/doctor/patients", "/api/staff", "/api/events/appointments"]) {
     assert.equal((await call(path, "GET", undefined, nurseCookie)).status, 403, `nurse cannot read ${path}`);
   }
@@ -194,9 +197,12 @@ try {
   const orphanSession = await login(`${prefix}_doctor`);
   assert.equal((await call("/api/doctors", "PATCH", { id: orphan.id, temporaryPassword: resetPassword }, adminCookie)).status, 200);
   assert.equal((await call("/api/appointments", "GET", undefined, orphanSession)).status, 401);
-  const patient = await prisma.patient.findFirst({ select: { id: true } });
-  const service = await prisma.service.findFirst({ select: { id: true } });
-  assert.ok(patient && service, "Branch should contain existing appointment fixtures");
+  const patient = await prisma.patient.create({ data: { firstName: "Test", lastName: prefix, phone: "99000001" }, select: { id: true } });
+  patientId = patient.id;
+  const department = await prisma.department.create({ data: { name: prefix }, select: { id: true } });
+  departmentId = department.id;
+  const service = await prisma.service.create({ data: { name: prefix, durationMin: 30, price: 1000, departmentId }, select: { id: true } });
+  serviceId = service.id;
   const appointment = await prisma.appointment.create({ data: { patientId: patient.id, serviceId: service.id, doctorId: orphan.id, appointmentDate: new Date("2035-01-01T00:00:00Z"), startTime: "09:00", endTime: "09:30" } });
   appointmentId = appointment.id;
   assert.equal((await call("/api/staff", "DELETE", { userId: attached.data.member.userId }, adminCookie)).status, 409);
@@ -208,6 +214,12 @@ try {
   assert.equal((await call("/api/staff-types", "DELETE", { id: staffType.id }, adminCookie)).status, 200);
   await prisma.auditLog.create({ data: { userId: manager.userId, action: "TEST_ACTIVITY", entity: "User", entityId: manager.userId } });
   assert.equal((await call("/api/staff", "DELETE", { userId: manager.userId }, adminCookie)).status, 409);
+  const timedStaff = await prisma.user.create({ data: { username: `${prefix}_timed`, fullName: "Attendance history", passwordHash: hash, role: "NURSE" } });
+  userIds.push(timedStaff.id);
+  await login(timedStaff.username);
+  const protectedAttendance = await call("/api/staff", "DELETE", { userId: timedStaff.id }, adminCookie);
+  assert.equal(protectedAttendance.status, 409);
+  assert.match(protectedAttendance.data.error, /Цагийн бүртгэлтэй/);
   const disposable = await call("/api/staff", "POST", { fullName: "Disposable staff", username: `${prefix}_delete`, temporaryPassword: password, phone: "", typeId: "MANAGER" }, adminCookie);
   assert.equal(disposable.status, 201);
   userIds.push(disposable.data.member.userId);
@@ -217,9 +229,13 @@ try {
   console.log("Staff API integration checks passed.");
 } finally {
   if (appointmentId) await prisma.appointment.deleteMany({ where: { id: appointmentId } });
+  if (patientId) await prisma.patient.delete({ where: { id: patientId } });
+  if (serviceId) await prisma.service.delete({ where: { id: serviceId } });
+  if (departmentId) await prisma.department.delete({ where: { id: departmentId } });
   await prisma.auditLog.deleteMany({ where: { OR: [{ userId: { in: userIds } }, { entityId: { in: [...userIds, ...doctorIds, ...typeIds] } }] } });
   await prisma.doctorSchedule.deleteMany({ where: { doctorId: { in: doctorIds } } });
   await prisma.doctor.deleteMany({ where: { OR: [{ id: { in: doctorIds } }, { userId: { in: userIds } }] } });
+  await prisma.attendance.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.staffType.deleteMany({ where: { id: { in: typeIds } } });
   if (oldRegistryPassword) await prisma.setting.update({ where: { key: oldRegistryPassword.key }, data: { value: oldRegistryPassword.value } });
