@@ -81,7 +81,6 @@ export function AttendanceReport({ isAdmin, defaults, checkoutError, hasAttendan
   return <div className="space-y-6">
     <div>
       <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><Clock3 className="h-6 w-6 text-sky-600" />{isAdmin ? "Ажилчдын цагийн тайлан" : "Миний цагийн тайлан"}</h1>
-      <p className="mt-2 text-sm text-slate-600">Системд нэвтрэхэд орсон цаг, «Гарах» товч дарахад гарсан цаг бүртгэгдэнэ. Бүх цаг Улаанбаатарын цагаар харагдана.</p>
     </div>
     {checkoutError ? <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-700">Гарсан цагийг хадгалж чадсангүй. Дахин «Гарах» товч дарна уу.</p> : null}
     {!hasAttendance ? <p className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">Энэ нэвтрэлтэд цагийн бүртгэл эхлээгүй байна. Гараад дахин нэвтэрч цагийн бүртгэлээ эхлүүлнэ үү.</p> : null}
@@ -105,12 +104,9 @@ export function AttendanceReport({ isAdmin, defaults, checkoutError, hasAttendan
       <button type="submit" disabled={loading} className="rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50">Тайлан харах</button>
       <button type="button" disabled={loading} onClick={() => setRevision((value) => value + 1)} className={`${fieldClass} flex items-center gap-2 disabled:opacity-50`}><RefreshCw className="h-4 w-4" />Шинэчлэх</button>
     </form>
-    {isAdmin ? <p className="text-sm text-slate-600">Ажилтан, он, сараа сонгоод «Тайлан харах» дарна уу. «Өмнөх сар», «Дараах сар» товчоор сонгосон ажилтны бусад сарын тайланг шууд харна.</p> : null}
-    <p className="text-sm text-slate-500">Нэвтэрсэн огноогоор шүүнэ. Нийт хугацаанд зөвхөн гарсан цагтай бүртгэл орно. Хөтөч хаахад гарах цаг бүртгэгдэхгүй. 24 цагаас хэтэрсэн нээлттэй бүртгэлийг «Гаралт бүртгээгүй» гэж үзэж, нийт хугацаанд оруулахгүй.</p>
     {loading ? <p role="status" className="rounded-xl bg-white p-8 text-center text-slate-500">Цагийн тайланг ачаалж байна...</p> : error ? <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-700">{error}</p> : report && totals ? <>
       {isAdmin ? <div className="rounded-xl border border-sky-100 bg-sky-50 px-5 py-4">
         <h2 className="font-semibold text-sky-950">{filters.userId ? names.get(filters.userId) : "Бүх ажилтан"} · {selectedMonthLabel}</h2>
-        <p className="mt-1 text-sm text-sky-800">{filters.from} – {filters.to} · Сарын нийт хугацаа болон орсон, гарсан цагийн дэлгэрэнгүй</p>
       </div> : null}
       <div className="grid gap-4 sm:grid-cols-3">
         {[["Нийт бүртгэгдсэн хугацаа", formatAttendanceDuration(totals.durationMs)], ["Дууссан бүртгэл", totals.completed], ["Гарсан цаггүй бүртгэл", totals.incomplete]].map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold text-sky-900">{value}</p></div>)}
