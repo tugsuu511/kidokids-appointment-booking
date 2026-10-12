@@ -116,7 +116,10 @@ test("calendar retains all records beyond 50, expands crowded days and labels ov
   const data = report();
   const records = Array.from({ length: 55 }, (_, index) => ({ ...data.records[0], id: `record-${index}` }));
   records.push({ ...data.records[0], id: "overnight", checkIn: "2026-10-01T15:30:00Z", checkOut: "2026-10-01T17:30:00Z" });
-  await testing.act(async () => requests[0].resolve(Response.json({ ...data, records })));
+  await testing.act(async () => requests[0].resolve(Response.json({ ...data, records: [] })));
+  testing.fireEvent.change(view.getByRole("combobox", { name: "Ажилтан" }), { target: { value: "nurse" } });
+  testing.fireEvent.click(view.getByRole("button", { name: "Тайлан харах" }));
+  await testing.act(async () => requests[1].resolve(Response.json({ ...data, records })));
   const day = view.getByRole("button", { name: "2026-10-01, 56 бүртгэл" });
   assert.ok(testing.within(day).getByText("Нэмж 54 бүртгэл"));
   assert.ok(testing.within(day).getByText("Нийт 112 цаг 0 мин"));
@@ -125,6 +128,28 @@ test("calendar retains all records beyond 50, expands crowded days and labels ov
   assert.ok(view.getByText(/2026.*10.*02.*01:30/));
   testing.fireEvent.click(view.getByRole("button", { name: "2026-10-02, 0 бүртгэл" }));
   assert.ok(view.getByText("Энэ өдөр цагийн бүртгэл алга."));
+});
+
+test("admin calendar is absent for all staff and only shows the selected employee", async () => {
+  const { view, requests } = mount(true);
+  const data = report();
+  const records = [...data.records, { ...data.records[0], id: "other-record", userId: "other" }];
+  await testing.act(async () => requests[0].resolve(Response.json({ ...data, records })));
+  assert.equal(view.queryByRole("heading", { name: "Орсон, гарсан цагийн дэлгэрэнгүй" }), null);
+  assert.ok(view.getByRole("heading", { name: "Ажилтан тус бүрийн нэгтгэл" }));
+
+  testing.fireEvent.change(view.getByRole("combobox", { name: "Ажилтан" }), { target: { value: "nurse" } });
+  assert.equal(view.queryByRole("heading", { name: "Орсон, гарсан цагийн дэлгэрэнгүй" }), null);
+  testing.fireEvent.click(view.getByRole("button", { name: "Тайлан харах" }));
+  await testing.act(async () => requests[1].resolve(Response.json({ ...data, records })));
+  assert.ok(view.getByRole("button", { name: "2026-10-01, 1 бүртгэл" }));
+  assert.equal(view.queryByRole("button", { name: "2026-10-01, 2 бүртгэл" }), null);
+
+  testing.fireEvent.change(view.getByRole("combobox", { name: "Ажилтан" }), { target: { value: "" } });
+  assert.equal(view.queryByRole("heading", { name: "Орсон, гарсан цагийн дэлгэрэнгүй" }), null);
+  testing.fireEvent.click(view.getByRole("button", { name: "Тайлан харах" }));
+  await testing.act(async () => requests[2].resolve(Response.json({ ...data, records: [] })));
+  assert.equal(view.queryByRole("table", { name: /цаг бүртгэлийн календарь/ }), null);
 });
 
 test("employees can navigate calendars only inside a multi-month date filter", async () => {

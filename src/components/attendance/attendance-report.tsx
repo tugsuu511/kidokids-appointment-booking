@@ -125,11 +125,12 @@ export function AttendanceReport({ isAdmin, defaults, checkoutError, hasAttendan
           })}</tbody>
         </table></div>
       </section>
-      <AttendanceCalendar key={`${filters.from}:${filters.to}:${filters.userId}:${filters.calendarMonth}`}
-        month={filters.calendarMonth} from={filters.from} to={filters.to} records={report.records}
+      {(!isAdmin || (filters.userId && draft.userId === filters.userId)) ? <AttendanceCalendar key={`${filters.from}:${filters.to}:${filters.userId}:${filters.calendarMonth}`}
+        month={filters.calendarMonth} from={filters.from} to={filters.to}
+        records={isAdmin ? report.records.filter((record) => record.userId === filters.userId) : report.records}
         employees={employees} showNames={isAdmin} onMonthChange={navigateCalendar}
         previousDisabled={!shiftAttendanceMonth(filters.calendarMonth, -1) || (!isAdmin && filters.calendarMonth <= filters.from.slice(0, 7))}
-        nextDisabled={!shiftAttendanceMonth(filters.calendarMonth, 1) || (!isAdmin && filters.calendarMonth >= filters.to.slice(0, 7))} />
+        nextDisabled={!shiftAttendanceMonth(filters.calendarMonth, 1) || (!isAdmin && filters.calendarMonth >= filters.to.slice(0, 7))} /> : null}
     </> : null}
   </div>;
 }

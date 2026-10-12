@@ -118,6 +118,10 @@ try {
   const calendar = await call(`/api/attendance?from=2025-10-01&to=2025-10-31&userId=${nurse.id}&calendarMonth=2025-10`, "GET", admin.cookie);
   assert.equal(calendar.status, 200);
   assert.equal(calendar.data.records.length, 58, "calendar includes every record, not only the first page");
+  const allStaff = await call("/api/attendance?from=2025-10-01&to=2025-10-31&calendarMonth=2025-10", "GET", admin.cookie);
+  assert.equal(allStaff.status, 200);
+  assert.equal(allStaff.data.records.length, 0, "all-staff selection does not load calendar records");
+  assert.ok(allStaff.data.summary.length > 0, "all-staff summaries remain available");
   const clipped = await call(`/api/attendance?from=2025-10-02&to=2025-10-02&calendarMonth=2025-10`, "GET", afterStaleCookie);
   assert.equal(clipped.data.records.length, 56);
   assert.ok(clipped.data.records.every((row: { userId: string }) => row.userId === nurse.id));

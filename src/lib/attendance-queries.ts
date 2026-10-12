@@ -70,7 +70,9 @@ export async function getAttendanceReport(user: SessionUser, filters: { from: st
       where: { ...where, checkIn: { gte: recordRange.start, lt: recordRange.end } },
       select: { id: true, userId: true, checkIn: true, checkOut: true, missedCheckOut: true },
       orderBy: [{ checkIn: "desc" }, { id: "desc" }],
-      ...(filters.calendarMonth ? {} : { skip: (filters.page - 1) * ATTENDANCE_PAGE_SIZE, take: ATTENDANCE_PAGE_SIZE }),
+      // The all-staff view needs summaries only; a calendar is scoped to one employee.
+      skip: filters.calendarMonth ? undefined : (filters.page - 1) * ATTENDANCE_PAGE_SIZE,
+      take: filters.calendarMonth ? (userId ? undefined : 0) : ATTENDANCE_PAGE_SIZE,
     }),
   ], { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   return {
